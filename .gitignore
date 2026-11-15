@@ -1,0 +1,5 @@
+node_modules/
+data/all-time-best.json
+*.log
+.DS_Store
+Thumbs.db

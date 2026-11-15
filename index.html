@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#05060f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2305060f'/%3E%3Cpath d='M8 2l5 10-5-3-5 3z' fill='%2351f6ff'/%3E%3C/svg%3E">
+  <title>Neon Survivor</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="stage">
+    <canvas id="game" width="1600" height="900" aria-label="Neon Survivor game canvas"></canvas>
+
+    <div id="hud" class="hidden">
+      <div class="hud-top-left">
+        <div class="hud-label">SCORE</div>
+        <div id="score" class="hud-score">0</div>
+        <div id="best-hud" class="hud-sub">BEST 0</div>
+      </div>
+
+      <div class="hud-top-center">
+        <div id="wave-label" class="hud-wave">WAVE 1</div>
+        <div id="boss-wrap" class="boss-wrap hidden">
+          <div id="boss-name" class="boss-name">THE WARDEN</div>
+          <div class="bar boss-bar"><div id="boss-fill" class="fill boss-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="hud-top-right">
+        <div id="level-pill" class="level-pill">LV 1</div>
+        <button id="pause-btn" class="icon-btn" title="Pause (Esc)" aria-label="Pause">II</button>
+        <button id="mute-btn" class="icon-btn" title="Mute (M)" aria-label="Mute">SND</button>
+      </div>
+
+      <div id="combo" class="combo hidden">x1.0</div>
+
+      <div class="hud-bottom">
+        <div class="hud-bars">
+          <div class="bar hp-bar">
+            <div id="hp-fill" class="fill hp-fill"></div>
+            <span id="hp-text" class="bar-text">100 / 100</span>
+          </div>
+          <div class="bar xp-bar">
+            <div id="xp-fill" class="fill xp-fill"></div>
+            <span id="xp-text" class="bar-text">XP 0 / 6</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="wave-banner" class="wave-banner hidden">
+      <div id="wave-banner-main" class="wave-banner-main">WAVE 1</div>
+      <div id="wave-banner-sub" class="wave-banner-sub"></div>
+    </div>
+
+    <section id="menu" class="screen menu-screen">
+      <div class="menu-card">
+        <h1 class="title">NEON<span>SURVIVOR</span></h1>
+        <p class="tagline">Outlive the grid. Level up. Melt everything.</p>
+        <div class="menu-best">BEST SCORE <strong id="menu-best">0</strong></div>
+
+        <button id="start-btn" class="primary-btn">START RUN</button>
+
+        <div class="settings-row">
+          <button id="menu-mute-btn" class="ghost-btn" aria-label="Toggle sound">SOUND: ON</button>
+          <label class="volume-label">
+            VOLUME
+            <input id="volume-slider" class="volume-slider" type="range" min="0" max="100" value="60">
+          </label>
+        </div>
+
+        <div class="controls">
+          <div><kbd>WASD</kbd> / <kbd>ARROWS</kbd> move</div>
+          <div><kbd>MOUSE</kbd> aim — auto-fire, hold to rush</div>
+          <div><kbd>ESC</kbd>/<kbd>P</kbd> pause · <kbd>M</kbd> mute · touch: left stick, right aim</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="pause" class="screen hidden">
+      <div class="menu-card small-card">
+        <h2 class="screen-title">PAUSED</h2>
+        <div class="button-col">
+          <button id="resume-btn" class="primary-btn">RESUME</button>
+          <button id="pause-restart-btn" class="ghost-btn">RESTART</button>
+          <button id="pause-menu-btn" class="ghost-btn">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="gameover" class="screen hidden">
+      <div class="menu-card small-card">
+        <h2 class="screen-title danger">SIGNAL LOST</h2>
+        <div id="new-best" class="new-best hidden">NEW BEST!</div>
+        <div class="stat-grid">
+          <div><span>SCORE</span><strong id="go-score">0</strong></div>
+          <div><span>WAVE</span><strong id="go-wave">1</strong></div>
+          <div><span>BEST</span><strong id="go-best">0</strong></div>
+        </div>
+        <div class="button-col">
+          <button id="go-restart-btn" class="primary-btn">RUN IT AGAIN</button>
+          <button id="go-menu-btn" class="ghost-btn">MAIN MENU</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="levelup" class="screen hidden">
+      <div class="levelup-card">
+        <div class="levelup-head">
+          <h2 class="screen-title glow">LEVEL UP</h2>
+          <p class="levelup-sub">Choose a system upgrade</p>
+        </div>
+        <div id="upgrade-cards" class="upgrade-cards"></div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
