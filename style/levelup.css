@@ -1,0 +1,73 @@
+.levelup-card { width: min(1000px, 96%); text-align: center; }
+.levelup-head { margin-bottom: clamp(12px, 2vw, 24px); }
+.levelup-sub { margin: 0; color: var(--muted); letter-spacing: 0.24em; font-size: clamp(9px, 0.9vw, 13px); }
+.upgrade-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1.4vw, 18px);
+}
+.upgrade-card {
+  position: relative;
+  text-align: left;
+  padding: clamp(12px, 1.7vw, 22px);
+  min-height: clamp(140px, 18vw, 215px);
+  border: 1px solid rgba(81, 246, 255, 0.35);
+  border-radius: 13px;
+  background: linear-gradient(160deg, rgba(12, 22, 48, 0.96), rgba(5, 8, 20, 0.98));
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.1s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.upgrade-card:hover, .upgrade-card:focus-visible {
+  transform: translateY(-4px);
+  border-color: var(--cyan);
+  box-shadow: 0 0 28px rgba(81, 246, 255, 0.28);
+  outline: none;
+}
+.upgrade-card:disabled { opacity: 0.5; cursor: default; transform: none; }
+.upgrade-tag {
+  display: inline-block;
+  padding: 3px 7px;
+  margin-bottom: 10px;
+  font-size: clamp(8px, 0.7vw, 10px);
+  letter-spacing: 0.18em;
+  color: #041014;
+  background: var(--cyan);
+  border-radius: 4px;
+}
+.upgrade-name {
+  margin: 0 0 8px;
+  font-size: clamp(13px, 1.4vw, 21px);
+  color: #fff;
+  letter-spacing: 0.06em;
+}
+.upgrade-desc { margin: 0; font-size: clamp(9px, 0.88vw, 13px); line-height: 1.55; color: var(--muted); }
+.upgrade-level {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  font-size: clamp(8px, 0.75vw, 11px);
+  letter-spacing: 0.16em;
+  color: var(--amber);
+}
+
+.upgrade-card.evolution {
+  border-color: var(--amber);
+  background: linear-gradient(160deg, rgba(46, 32, 8, 0.96), rgba(12, 8, 20, 0.98));
+  box-shadow: inset 0 0 34px rgba(255, 179, 64, 0.08);
+}
+.upgrade-card.evolution .upgrade-tag {
+  background: linear-gradient(90deg, #ffb340, #ff3bd4);
+  color: #130b04;
+}
+.upgrade-card.evolution .upgrade-name { color: var(--amber); }
+
+@media (max-width: 720px), (max-height: 520px) {
+  .upgrade-cards { grid-template-columns: 1fr; gap: 7px; }
+  .upgrade-card { min-height: 0; padding: 9px 12px; display: grid; grid-template-columns: auto 1fr; column-gap: 10px; }
+  .upgrade-tag { grid-row: span 2; align-self: center; margin: 0; }
+  .upgrade-name { margin-bottom: 2px; }
+  .upgrade-level { position: static; grid-column: 2; margin-top: 2px; }
+}

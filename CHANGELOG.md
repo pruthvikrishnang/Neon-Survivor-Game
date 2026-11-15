@@ -2,6 +2,33 @@
 
 All notable changes to Neon Survivor are documented here.
 
+## [1.3.0] - 2026-11-15
+
+### Added
+
+- Four selectable weapons: Pulse, Scatter, Lance, and orbiting blades, each with distinct stats and upgrade pools.
+- Dasher, bomber, and summoner enemies with windup charges, fuse explosions, and minion spawning.
+- Warden, Weaver, and Colossus boss rotation with radial, aimed-fan, and spiral patterns plus a 50% health phase change.
+- Crit, explosive, burn, and orbit-reach upgrades, plus Rail Detonator and Thermal Cascade synergies.
+- Apex Protocol and Event Horizon evolutions at player levels 10 and 20.
+- Persistent Codex for encountered enemies, bosses, and upgrade cards, saved in `localStorage`.
+- Weapon select cards, Codex screens from menu/pause, and evolution card styling.
+
+### Changed
+
+- Split config, weapons, enemies, particles, game, and UI into focused modules; original import paths remain available through barrels.
+- Split `style.css` into `style/base.css`, `hud.css`, `screens.css`, `levelup.css`, and `codex.css`.
+- Split the Node tests into core, behavior, depth, and harness modules.
+- New enemy unlocks are layered into wave composition: dashers wave 4, bombers wave 6, summoners wave 8.
+- Tank splits and summoner minions reveal the Mite Codex entry; boss encounters reveal the specific boss kind.
+- README structure, features, controls, architecture, testing, and limitations updated.
+
+### Verified
+
+- `node tests/logic.test.js`: 26/26 tests pass.
+- Headless Chrome: menu, four weapon cards, weapon selection, start, pause, Codex open/close, resume, and no console exceptions.
+- Source files remain under 300 lines; legacy pre-split files removed.
+
 ## [1.2.0] - 2026-11-15
 
 ### Added

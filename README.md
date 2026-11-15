@@ -45,17 +45,21 @@ python -m http.server 8000
 | `M` | Mute / unmute |
 | `Enter` / `Space` | Start from menu, or restart after game over |
 | `R` | Restart after game over |
+| Codex button | Open persistent encounter log from menu or pause |
 | Touch, left half | Virtual joystick |
 | Touch, right half | Drag to aim and fire; auto-aims when idle |
 | Touch dash button | Dash; shows a cooldown ring until ready |
 
 ## Features
 
-- Wave-based survival with chasers, ranged shooters, armored tanks, and a boss every five waves.
-- Boss fights with radial bullet bursts, aimed volleys, and a health bar.
+- Wave-based survival with chasers, ranged shooters, armored tanks, charging dashers, exploding bombers, summoners, and a boss every five waves.
+- Three rotating bosses (Warden, Weaver, Colossus) with distinct attack patterns and a 50% health phase change.
+- Four selectable weapons: balanced Pulse, close-range Scatter, piercing Lance, and orbiting blades.
 - Automatic firing with rapid fire while the mouse is held.
 - XP gems, level-ups, and a three-card upgrade draft.
-- Seven stackable upgrade tracks: fire rate, damage, multishot, pierce, move speed, max HP, and magnet radius.
+- Eleven stackable upgrade tracks, including crit, explosive rounds, burn, and orbit reach, plus two conditional synergies.
+- Rare Apex Protocol and Event Horizon evolutions at levels 10 and 20.
+- Persistent Codex that records enemies and upgrades encountered across runs in `localStorage`.
 - Score combo multiplier that decays when kills stop.
 - Player health, invulnerability frames, contact damage, and enemy projectiles.
 - Procedurally drawn arena, glowing grid, vignette, particles, explosions, and screen shake.
@@ -70,8 +74,13 @@ python -m http.server 8000
 
 ```text
 neon-survivor/
-  index.html           Canvas, HUD, menus, upgrade picker, and overlays
-  style.css            Neon UI, responsive 16:9 layout, transitions
+  index.html           Canvas, HUD, menus, weapon select, Codex, and overlays
+  style/
+    base.css           Variables, layout, shared screens, and buttons
+    hud.css            HUD, health/XP bars, boss bar, and wave banner
+    screens.css        Menu, pause, game-over, stats, and weapon select
+    levelup.css        Upgrade draft cards and evolution styling
+    codex.css          Persistent Codex layout
   server.mjs           Static server plus all-time-best API
   data/
     all-time-best.json Shared persisted all-time best score (created automatically)
@@ -79,21 +88,30 @@ neon-survivor/
   CHANGELOG.md         Release notes and verification history
   DECISIONS.md         Design decisions and development workflow
   src/
-    config.js          Central gameplay, color, audio, UI, and server tuning
+    config.js          Barrel over the split config modules
+    config/            Core, player, enemy, weapon, upgrade, UI, audio, particle tuning
     time.js            Hit-stop and slow-motion time scaling
     main.js            Boot, event wiring, fixed-timestep game loop
-    game.js            State machine, waves, scoring, upgrades, rendering
+    game.js            Barrel over game state, combat, and render modules
+    game/              State machine, combat events, render orchestration
     best.js            Local/server all-time best synchronization
-    player.js          Movement, stats, health, XP, upgrades, ship drawing
-    enemies.js         Wave composition, spawning, enemy AI, bosses
-    weapons.js         Bullets, collision broad phase, upgrades
-    particles.js       Particle/gem pools, enemy drawing helpers
+    player.js          Movement, weapon stats, health, XP, evolutions, ship drawing
+    codex.js           Persistent enemy/upgrade encounter tracker
+    enemies.js         Barrel over wave, placement, AI, lifecycle, and render modules
+    enemies/           Wave composition, spawning, enemy AI, boss integration
+    bosses/index.js    Boss movement, attack patterns, and phase changes
+    weapons.js         Barrel over grid, pools, upgrades, and weapon system
+    weapons/           Spatial grid, bullets, pools, orbiting blades, upgrade logic
+    particles.js       Barrel over particle/gem pools and enemy drawing
+    particles/         Particle pool, gem pool, enemy shapes, and draw helpers
     audio.js           Procedural Web Audio sound effects
     input.js           Keyboard, mouse, and touch input
-    ui.js              DOM HUD and screens, procedural background helpers
-    storage.js         Local storage and all-time-best API client
+    ui.js              Barrel over DOM UI, backgrounds, reticle, and Codex view
+    ui/                HUD, screens, weapon cards, Codex renderer, backgrounds
+    storage.js         Local storage, Codex, and all-time-best API client
   tests/
-    logic.test.js      Dependency-free Node logic tests
+    logic.test.js      Dependency-free Node test runner
+    lib/               Split core, behavior, depth, and harness tests
 ```
 
 ## Architecture and design decisions
@@ -102,20 +120,22 @@ neon-survivor/
 - **Fixed timestep.** `main.js` runs updates at a fixed 60 Hz with an accumulator, clamps long frames, and limits catch-up steps. This keeps physics, collision, and balance deterministic across refresh rates.
 - **Simulation time vs real time.** Gameplay runs through `TimeScale`, so hit-stop freezes only simulation while rendering, shake decay, particles, trails, and the HUD keep animating. Priority is pause/level-up, then hit-stop, then slow-motion.
 - **No camera.** The arena is intentionally a single fixed screen. This keeps the arcade-siege feel, simplifies touch controls, and ensures every threat is visible.
-- **Always-on auto-fire.** The ship fires toward the cursor automatically; holding the mouse increases the fire rate. This keeps the game playable with one hand and makes the upgrade draft the main source of tactical choice.
+- **Always-on auto-fire.** Projectile weapons fire toward the cursor automatically; holding the mouse increases the fire rate. Orbit blades trade range for persistent contact damage. This keeps the game playable with one hand and makes the upgrade draft the main source of tactical choice.
+- **Weapon-specific upgrade pools.** Each weapon declares which upgrades it can roll, so Scatter does not offer rail pierce and Pulse does not offer burn. Synergies appear only when their prerequisite levels are met, and evolutions replace a regular card at levels 10 and 20.
 - **Broad-phase collisions.** Enemies are inserted into a uniform spatial grid. Player bullet queries include a margin for large enemies so tanks and bosses cannot be missed when their centers sit in adjacent cells.
 - **Wave spawning is drip-fed.** Wave composition is capped and enemies are released gradually. This avoids a single-frame spawn spike while still filling the arena during long waves.
-- **Bosses use scripted patterns.** Bosses alternate radial bursts and aimed multi-shot volleys, with attack timing and enrage behavior scaled by wave. They are deliberately one-per-wave and telegraphed by a banner.
+- **Bosses rotate and phase.** Warden, Weaver, and Colossus cycle across boss waves with different radial, aimed-fan, and spiral patterns. Each boss enrages at 50% health, adds projectiles, and shortens its attack cycle. They are deliberately one-per-wave and telegraphed by a banner.
 - **Pooled effects and projectiles.** Bullet, particle, and gem pools recycle the oldest entries when full, trading absolute fidelity in extreme cases for stable memory and frame time.
 - **Procedural identity.** The entire visual language comes from canvas primitives, gradients, glow strokes, and generated UI styling. Audio is synthesized with oscillators and noise buffers, so the project has zero binary assets.
 - **Persistent all-time best.** `server.mjs` exposes `GET /api/best` and `POST /api/best`. It stores only the highest submitted score in `data/all-time-best.json`; reloads and restarts read that file, so a new lower score cannot become the high score. The browser also keeps a local copy and merges it upward on startup, so an existing local best seeds the server and a server best replaces stale browser data. With plain static hosting, the game silently falls back to per-browser `localStorage`.
-- **Safe failure handling.** All storage and API access is wrapped. If `localStorage` is blocked or the persistence server is unreachable, scores and settings still work in memory and local storage for the session.
-- **Testable logic.** Wave math, scaling, collision, spatial queries, upgrade application, XP thresholds, boss patterns, and storage fallbacks are separated from the DOM and covered by Node tests.
-- **Central tuning.** Gameplay constants, colors, audio parameters, UI timings, persistence keys, and server defaults live in `src/config.js`; pure mathematical and rendering geometry stays close to its drawing code.
+- **Persistent Codex.** Encountered enemy types and upgrade cards are saved separately from run state, so the Codex survives restarts without adding permanent power. Boss Codex entries use the boss kind (Warden, Weaver, Colossus), and tank splits reveal the Mite entry.
+- **Safe failure handling.** All storage and API access is wrapped. If `localStorage` is blocked or the persistence server is unreachable, scores, settings, and Codex progress still work in memory for the session.
+- **Testable logic.** Wave math, scaling, collision, spatial queries, weapon stats, upgrade availability, evolutions, Codex persistence, boss phases, and storage fallbacks are separated from the DOM and covered by Node tests.
+- **Central tuning, split modules.** Gameplay constants, colors, audio parameters, UI timings, persistence keys, and server defaults live under `src/config/`; existing imports still resolve through `src/config.js`. Pure mathematical and rendering geometry stays close to its drawing code.
 
 ## Tuning
 
-Gameplay balance, enemy scaling, spawn rates, colors, audio, UI timings, storage keys, and server defaults are centralized in `src/config.js`. Change values there instead of editing individual modules.
+Gameplay balance, enemy scaling, spawn rates, weapon definitions, upgrade pools, colors, audio, UI timings, storage keys, and server defaults are centralized under `src/config/` and re-exported from `src/config.js`. Change values there instead of editing individual modules.
 
 ## Testing
 
@@ -125,9 +145,9 @@ Run the logic tests with Node (no packages required):
 node tests/logic.test.js
 ```
 
-The suite covers circle overlap, adjacent-cell spatial queries, wave composition and caps, enemy scaling, upgrade stacking and caps, upgrade rolling, player levelling, boss attack patterns, dash cooldown/invulnerability timing, hit-stop countdown and priority, telegraph-to-spawn transitions, and storage fallbacks.
+The suite covers circle overlap, adjacent-cell spatial queries, wave composition and caps, enemy scaling, upgrade stacking and caps, upgrade rolling, player levelling, boss attack patterns and phase changes, dash cooldown/invulnerability timing, hit-stop countdown and priority, telegraph-to-spawn transitions, weapon selection, crit/explosive/reach stats, synergy requirements, evolutions, orbit cooldowns, bomber/summoner/burn behavior, Codex persistence, and storage fallbacks.
 
-The game has also been exercised in headless Chrome for startup, real menu clicks, a five-minute simulated run, pause/resume/menu/game-over transitions, all-time-best persistence across reloads and cleared local storage, a 320-enemy stress scenario, and the server API across restarts with no console errors.
+The game has also been exercised in headless Chrome for startup, weapon selection, start/pause/Codex/resume transitions, no console errors, and earlier all-time-best persistence, 320-enemy stress, and server API checks.
 
 For automation, the running game is exposed as `window.neonSurvivor`. This is intentional and useful for debugging; it is not required for normal play.
 
@@ -135,7 +155,7 @@ For automation, the running game is exposed as `window.neonSurvivor`. This is in
 
 - The arena is fixed at 1600x900 with no scrolling or camera.
 - Touch support provides a joystick, right-side aim/fire, and a dash button, but there is no dedicated fullscreen button or mobile-specific UI layout.
-- Only the all-time best and audio settings persist; there is no run save, meta-progression, or unlock system.
+- The all-time best, audio settings, and Codex persist; there is no run save, permanent stat progression, or unlock system.
 - The shared all-time best requires running `server.mjs`. Plain static hosting falls back to browser-local persistence, so different browsers or cleared browser data can differ without the Node server.
 - Pools cap bullets, particles, trails, and gems. In extreme late-game situations, the oldest effects are recycled.
 - Difficulty ramps continuously with wave number; there is no difficulty selector.

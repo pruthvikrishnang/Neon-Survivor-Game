@@ -1,4 +1,4 @@
-import { COLORS, DASH, PLAYER } from './config.js';
+import { ALL_UPGRADES, COLORS, DASH, PLAYER, WEAPON_TYPES } from './config.js';
 
 export const BASE_STATS = PLAYER.baseStats;
 
@@ -6,16 +6,19 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 /** The player ship: movement, aiming, health, XP and stacking upgrades. */
 export class Player {
-  /**
-   * @param {number} worldWidth
-   * @param {number} worldHeight
-   */
-  constructor(worldWidth, worldHeight) {
+  constructor(worldWidth, worldHeight, weaponId = 'pulse') {
     this.worldWidth = worldWidth;
     this.worldHeight = worldHeight;
     this.radius = PLAYER.radius;
+    this.weapon = WEAPON_TYPES[weaponId] ? weaponId : 'pulse';
     this.upgrades = {};
     this.reset();
+  }
+
+  setWeapon(weaponId) {
+    if (!WEAPON_TYPES[weaponId]) return;
+    this.weapon = weaponId;
+    this.recomputeStats();
   }
 
   reset() {
@@ -32,46 +35,76 @@ export class Player {
     this.dashCooldown = 0;
     this.dashX = 0;
     this.dashY = 0;
-    this.hp = PLAYER.baseStats.maxHp;
-    this.maxHp = PLAYER.baseStats.maxHp;
-    this.upgrades = {
-      fireRate: 0, damage: 0, multishot: 0, pierce: 0,
-      speed: 0, maxHp: 0, magnet: 0,
-    };
+    this.hp = 0;
+    this.maxHp = 0;
+    this.upgrades = Object.fromEntries(ALL_UPGRADES.map((upgrade) => [upgrade.id, 0]));
     this.recomputeStats();
     this.hp = this.maxHp;
   }
 
-  /** Recalculate derived stats from upgrade levels. Heals when max HP grows. */
+  /** Recalculate derived stats from the weapon and upgrade levels. */
   recomputeStats() {
     const u = this.upgrades;
-    const previousMax = this.maxHp;
+    const previousMax = this.maxHp || 0;
     const base = PLAYER.baseStats;
-    const upgrade = PLAYER.upgrades;
+    const up = PLAYER.upgrades;
+    const weapon = WEAPON_TYPES[this.weapon] || WEAPON_TYPES.pulse;
+    const apex = u.apexProtocol ? 1 : 0;
+    const horizon = u.eventHorizon ? 1 : 0;
+    const rail = u.railDetonator ? 1 : 0;
+    const cascade = u.thermalCascade ? 1 : 0;
+    const evolution = up.evolution;
+    const projectile = weapon.kind === 'projectile';
+    const damage = weapon.damage
+      * (1 + up.damagePerLevel * u.damage)
+      * (apex ? evolution.apexDamage : 1)
+      * (horizon ? evolution.horizonDamage : 1);
+    const fireInterval = Math.max(
+      up.minFireInterval,
+      weapon.fireInterval
+        * Math.pow(up.fireRateMultiplier, u.fireRate)
+        * (apex ? evolution.apexFire : 1)
+        * (cascade ? 0.85 : 1),
+    );
+    const extraShots = u.multishot + (horizon ? evolution.horizonShots : 0);
     this.stats = {
-      damage: base.damage * (1 + upgrade.damagePerLevel * u.damage),
-      fireInterval: Math.max(
-        upgrade.minFireInterval,
-        base.fireInterval * Math.pow(upgrade.fireRateMultiplier, u.fireRate),
-      ),
-      shots: 1 + u.multishot,
-      pierce: u.pierce,
-      moveSpeed: base.moveSpeed * (1 + upgrade.speedPerLevel * u.speed),
-      maxHp: base.maxHp + upgrade.hpPerLevel * u.maxHp,
-      magnet: base.magnet * (1 + upgrade.magnetPerLevel * u.magnet),
-      bulletSpeed: base.bulletSpeed,
+      weaponKind: weapon.kind,
+      damage,
+      fireInterval,
+      shots: projectile ? weapon.shots + extraShots : 0,
+      orbitCount: projectile ? 0 : weapon.orbitCount + extraShots,
+      orbitRadius: projectile ? 0 : weapon.orbitRadius * (1 + up.reachRadiusPerLevel * u.reach),
+      orbitSpeed: projectile ? 0 : weapon.orbitSpeed * (1 + up.reachSpeedPerLevel * u.reach),
+      orbitSize: projectile ? 0 : weapon.orbitSize,
+      orbitHitCooldown: projectile ? 0 : weapon.orbitHitCooldown,
+      pierce: weapon.pierce + u.pierce + (rail ? 1 : 0)
+        + (apex ? evolution.apexPierce : 0) + (horizon ? evolution.horizonPierce : 0),
+      moveSpeed: base.moveSpeed * (1 + up.speedPerLevel * u.speed)
+        * (horizon ? 1 + evolution.horizonSpeed : 1),
+      maxHp: base.maxHp + up.hpPerLevel * u.maxHp + (apex ? evolution.apexHp : 0),
+      magnet: base.magnet * (1 + up.magnetPerLevel * u.magnet),
+      bulletSpeed: weapon.bulletSpeed,
+      bulletRadius: weapon.bulletRadius,
+      bulletLife: weapon.bulletLife,
+      spread: weapon.spread,
+      color: weapon.color,
+      muzzleOffset: weapon.muzzleOffset,
+      critChance: up.critChancePerLevel * u.crit,
+      critMultiplier: up.critMultiplier,
+      explosionRadius: u.explosive
+        ? up.explosionRadiusBase + up.explosionRadiusPerLevel * u.explosive + (rail ? 28 : 0)
+        : 0,
+      explosionDamage: u.explosive
+        ? up.explosionBase + up.explosionPerLevel * u.explosive + (rail ? 0.35 : 0)
+        : 0,
+      burnDps: u.burn ? up.burnDpsBase + up.burnDpsPerLevel * u.burn + (cascade ? 4 : 0) : 0,
+      burnDuration: up.burnDuration,
     };
     this.maxHp = this.stats.maxHp;
     if (this.maxHp > previousMax) this.hp += this.maxHp - previousMax;
     this.hp = Math.min(this.hp, this.maxHp);
   }
 
-  /**
-   * Start a dash in the movement direction, or aim direction when stationary.
-   * @param {{x:number,y:number}} move
-   * @param {{x:number,y:number}} aim
-   * @returns {boolean}
-   */
   tryDash(move, aim) {
     if (!this.alive || this.dashTimer > 0 || this.dashCooldown > 0) return false;
     let dx = move.x;
@@ -100,12 +133,6 @@ export class Player {
     return true;
   }
 
-  /**
-   * Move and aim. Dash movement replaces normal movement while active.
-   * @param {number} dt
-   * @param {{x:number,y:number}} move
-   * @param {{x:number,y:number}} aim
-   */
   update(dt, move, aim) {
     this.invuln = Math.max(0, this.invuln - dt);
     this.dashCooldown = Math.max(0, this.dashCooldown - dt);
@@ -132,10 +159,6 @@ export class Player {
     if (dx * dx + dy * dy > PLAYER.aimDeadZoneSq) this.aimAngle = Math.atan2(dy, dx);
   }
 
-  /**
-   * @param {number} amount
-   * @returns {boolean} true when damage was actually applied
-   */
   takeDamage(amount) {
     if (this.invuln > 0 || this.hp <= 0) return false;
     this.hp = Math.max(0, this.hp - amount);
@@ -143,16 +166,10 @@ export class Player {
     return true;
   }
 
-  /** @param {number} amount */
   heal(amount) {
     this.hp = Math.min(this.maxHp, this.hp + amount);
   }
 
-  /**
-   * Add XP and resolve level-ups.
-   * @param {number} amount
-   * @returns {number} number of levels gained
-   */
   addXp(amount) {
     this.xp += amount;
     let gained = 0;
@@ -165,16 +182,10 @@ export class Player {
     return gained;
   }
 
-  /** @returns {boolean} */
   get alive() {
     return this.hp > 0;
   }
 
-  /**
-   * Draw the dash readiness ring around the ship.
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {number} time
-   */
   _drawDashRing(ctx, time) {
     const cfg = DASH.ring;
     const radius = this.radius + cfg.radiusPad;
@@ -196,23 +207,12 @@ export class Player {
       ctx.globalAlpha = cfg.cooldownAlpha;
       ctx.strokeStyle = COLORS.cyanBright;
       ctx.beginPath();
-      ctx.arc(
-        this.x,
-        this.y,
-        radius,
-        cfg.startAngle,
-        cfg.startAngle + Math.PI * 2 * progress,
-      );
+      ctx.arc(this.x, this.y, radius, cfg.startAngle, cfg.startAngle + Math.PI * 2 * progress);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  /**
-   * Draw the ship, shield and aim guide.
-   * @param {CanvasRenderingContext2D} ctx
-   * @param {number} time
-   */
   draw(ctx, time) {
     if (!this.alive) return;
     const d = PLAYER.draw;

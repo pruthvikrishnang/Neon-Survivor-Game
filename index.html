@@ -6,7 +6,11 @@
   <meta name="theme-color" content="#05060f">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2305060f'/%3E%3Cpath d='M8 2l5 10-5-3-5 3z' fill='%2351f6ff'/%3E%3C/svg%3E">
   <title>Neon Survivor</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style/base.css">
+  <link rel="stylesheet" href="./style/hud.css">
+  <link rel="stylesheet" href="./style/screens.css">
+  <link rel="stylesheet" href="./style/levelup.css">
+  <link rel="stylesheet" href="./style/codex.css">
 </head>
 <body>
   <div id="stage">
@@ -17,6 +21,7 @@
         <div class="hud-label">SCORE</div>
         <div id="score" class="hud-score">0</div>
         <div id="best-hud" class="hud-sub">BEST 0</div>
+        <div id="weapon-label" class="hud-sub weapon-label">PULSE</div>
       </div>
 
       <div class="hud-top-center">
@@ -62,10 +67,15 @@
         <p class="tagline">Outlive the grid. Level up. Melt everything.</p>
         <div class="menu-best">BEST SCORE <strong id="menu-best">0</strong></div>
 
+        <div class="weapon-head">SELECT WEAPON</div>
+        <div id="weapon-select" class="weapon-select"></div>
+        <p id="weapon-blurb" class="weapon-blurb"></p>
+
         <button id="start-btn" class="primary-btn">START RUN</button>
 
         <div class="settings-row">
           <button id="menu-mute-btn" class="ghost-btn" aria-label="Toggle sound">SOUND: ON</button>
+          <button id="codex-btn" class="ghost-btn">CODEX</button>
           <label class="volume-label">
             VOLUME
             <input id="volume-slider" class="volume-slider" type="range" min="0" max="100" value="60">
@@ -77,7 +87,7 @@
           <div><kbd>SPACE</kbd>/<kbd>SHIFT</kbd> dash</div>
           <div><kbd>MOUSE</kbd> aim — auto-fire, hold to rush</div>
           <div>Touch: left stick move, right aim, dash button</div>
-          <div><kbd>ESC</kbd>/<kbd>P</kbd> pause · <kbd>M</kbd> mute · touch: left stick, right aim</div>
+          <div><kbd>ESC</kbd>/<kbd>P</kbd> pause · <kbd>M</kbd> mute · <kbd>CODEX</kbd> from menu/pause</div>
         </div>
       </div>
     </section>
@@ -87,6 +97,7 @@
         <h2 class="screen-title">PAUSED</h2>
         <div class="button-col">
           <button id="resume-btn" class="primary-btn">RESUME</button>
+          <button id="pause-codex-btn" class="ghost-btn">CODEX</button>
           <button id="pause-restart-btn" class="ghost-btn">RESTART</button>
           <button id="pause-menu-btn" class="ghost-btn">MAIN MENU</button>
         </div>
@@ -106,6 +117,14 @@
           <button id="go-restart-btn" class="primary-btn">RUN IT AGAIN</button>
           <button id="go-menu-btn" class="ghost-btn">MAIN MENU</button>
         </div>
+      </div>
+    </section>
+
+    <section id="codex" class="screen hidden">
+      <div class="menu-card codex-card">
+        <h2 class="screen-title">CODEX</h2>
+        <div id="codex-list" class="codex-list"></div>
+        <button id="codex-close-btn" class="ghost-btn">CLOSE</button>
       </div>
     </section>
 

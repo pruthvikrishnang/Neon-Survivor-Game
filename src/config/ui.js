@@ -1,0 +1,43 @@
+export const UI = Object.freeze({
+  bannerDuration: 1950,
+  bossName: 'BOSS',
+  comboMin: 2,
+  volumeScale: 100,
+  codex: Object.freeze({
+    enemyTitle: 'HOSTILES',
+    upgradeTitle: 'SYSTEMS',
+    lockedName: 'UNKNOWN',
+    lockedDesc: 'Not yet encountered.',
+  }),
+  arena: Object.freeze({
+    glowNear: 80,
+    glowRadiusFactor: 0.72,
+    gradientMidStop: 0.55,
+    gradientOuterStop: 1,
+    gridStep: 80,
+    majorEvery: 400,
+    borderInset: 2,
+    borderWidth: 3,
+    outerInset: 8,
+    outerWidth: 8,
+  }),
+  vignette: Object.freeze({
+    innerFactor: 0.3,
+    outerFactor: 0.68,
+    edgeAlpha: 0.62,
+  }),
+  dangerVignette: Object.freeze({
+    threshold: 0.3,
+    innerFactor: 0.22,
+    outerFactor: 0.74,
+    alphaBase: 0.18,
+    alphaPulse: 0.22,
+    pulseSpeed: 5.2,
+  }),
+  reticle: Object.freeze({
+    radius: 9,
+    inner: 5,
+    outer: 15,
+    lineWidth: 1.5,
+  }),
+});
