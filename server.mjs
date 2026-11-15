@@ -2,12 +2,13 @@ import { createServer } from 'node:http';
 import { readFileSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SERVER } from './src/config.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(ROOT, 'data');
 const BEST_FILE = path.join(DATA_DIR, 'all-time-best.json');
-const PORT = Number(process.env.PORT) || 8765;
-const HOST = process.env.HOST || '127.0.0.1';
+const PORT = Number(process.env.PORT) || SERVER.defaultPort;
+const HOST = process.env.HOST || SERVER.defaultHost;
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -31,7 +32,11 @@ function readBest() {
 
 function persistBest(value) {
   mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(BEST_FILE, `${JSON.stringify({ best: value }, null, 2)}\n`, 'utf8');
+  writeFileSync(
+    BEST_FILE,
+    `${JSON.stringify({ best: value }, null, SERVER.jsonIndent)}\n`,
+    'utf8',
+  );
 }
 
 let best = readBest();
@@ -53,7 +58,7 @@ function readBody(req) {
     let size = 0;
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > 2048) {
+      if (size > SERVER.maxBodyBytes) {
         reject(new Error('body too large'));
         req.destroy();
         return;
@@ -110,7 +115,7 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/best') {
+  if (pathname === SERVER.apiPath) {
     if (req.method === 'GET') {
       sendJson(res, 200, { best });
       return;

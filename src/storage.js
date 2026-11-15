@@ -1,6 +1,8 @@
-const BEST_KEY = 'neon-survivor:best';
-const SETTINGS_KEY = 'neon-survivor:settings';
-const DEFAULT_SETTINGS = Object.freeze({ volume: 0.6, muted: false });
+import { SERVER, STORAGE } from './config.js';
+
+const BEST_KEY = STORAGE.bestKey;
+const SETTINGS_KEY = STORAGE.settingsKey;
+const DEFAULT_SETTINGS = STORAGE.defaultSettings;
 
 function readJSON(key, fallback) {
   try {
@@ -80,7 +82,10 @@ function validateBest(value) {
  */
 export async function loadRemoteBest() {
   try {
-    const res = await fetch('/api/best', { cache: 'no-store', headers: { Accept: 'application/json' } });
+    const res = await fetch(SERVER.apiPath, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
     if (!res.ok) return null;
     const payload = await res.json();
     return validateBest(payload && payload.best);
@@ -99,7 +104,7 @@ export async function saveRemoteBest(score) {
   const best = validateBest(score);
   if (best === null) return null;
   try {
-    const res = await fetch('/api/best', {
+    const res = await fetch(SERVER.apiPath, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ score: best }),

@@ -1,16 +1,21 @@
+import { COLORS, PARTICLES } from './config.js';
+
 const TAU = Math.PI * 2;
 
 function makeParticle() {
   return {
-    active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1,
-    size: 2, drag: 2.5, color: '#51f6ff',
+    active: false, kind: 0, big: false, text: '',
+    x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1,
+    size: PARTICLES.defaults.size,
+    drag: PARTICLES.defaults.drag,
+    color: PARTICLES.defaults.color,
   };
 }
 
 /** Fixed-size particle pool. Oldest particles are recycled when full. */
 export class ParticlePool {
   /** @param {number} capacity */
-  constructor(capacity = 900) {
+  constructor(capacity = PARTICLES.poolSize) {
     this.items = Array.from({ length: capacity }, makeParticle);
     this.cursor = 0;
   }
@@ -23,23 +28,49 @@ export class ParticlePool {
    * @param {number} x @param {number} y @param {string} color
    * @param {number} count @param {number} speed @param {number} life
    */
-  burst(x, y, color, count, speed = 190, life = 0.55) {
+  burst(x, y, color, count, speed = PARTICLES.burst.speed, life = PARTICLES.burst.life) {
+    const cfg = PARTICLES.burst;
     for (let i = 0; i < count; i += 1) {
       const p = this.items[this.cursor];
       this.cursor = (this.cursor + 1) % this.items.length;
       const angle = Math.random() * TAU;
-      const velocity = speed * (0.35 + Math.random() * 0.9);
+      const velocity = speed * (cfg.speedMin + Math.random() * cfg.speedSpread);
       p.active = true;
+      p.kind = 0;
+      p.text = '';
       p.x = x;
       p.y = y;
       p.vx = Math.cos(angle) * velocity;
       p.vy = Math.sin(angle) * velocity;
-      p.life = life * (0.6 + Math.random() * 0.7);
+      p.life = life * (cfg.lifeMin + Math.random() * cfg.lifeSpread);
       p.maxLife = p.life;
-      p.size = 1.5 + Math.random() * 2.6;
-      p.drag = 2.2 + Math.random() * 2;
+      p.size = cfg.sizeBase + Math.random() * cfg.sizeSpread;
+      p.drag = cfg.dragBase + Math.random() * cfg.dragSpread;
       p.color = color;
     }
+  }
+
+  /**
+   * Reuse the particle pool for a floating damage number.
+   * @param {number} x @param {number} y @param {number} amount
+   * @param {string} color @param {boolean} [big]
+   */
+  damageText(x, y, amount, color, big = false) {
+    const cfg = PARTICLES.damage;
+    const p = this.items[this.cursor];
+    this.cursor = (this.cursor + 1) % this.items.length;
+    p.active = true;
+    p.kind = 1;
+    p.big = big;
+    p.text = Math.max(1, Math.round(amount)).toString();
+    p.x = x;
+    p.y = y;
+    p.vx = (Math.random() * 2 - 1) * cfg.drift;
+    p.vy = -cfg.riseSpeed * (0.85 + Math.random() * 0.3);
+    p.life = cfg.life;
+    p.maxLife = cfg.life;
+    p.drag = cfg.drag;
+    p.color = color;
   }
 
   /** @param {number} dt */
@@ -58,22 +89,37 @@ export class ParticlePool {
 
   /** @param {CanvasRenderingContext2D} ctx */
   draw(ctx) {
+    const burst = PARTICLES.burst;
+    const damage = PARTICLES.damage;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const p of this.items) {
-      if (!p.active) continue;
+      if (!p.active || p.kind !== 0) continue;
       const ratio = p.life / p.maxLife;
-      ctx.globalAlpha = Math.min(1, ratio * 1.4);
+      ctx.globalAlpha = Math.min(1, ratio * burst.alphaScale);
       ctx.strokeStyle = p.color;
       ctx.lineWidth = p.size;
       ctx.beginPath();
-      ctx.moveTo(p.x - p.vx * 0.018, p.y - p.vy * 0.018);
+      ctx.moveTo(p.x - p.vx * burst.trail, p.y - p.vy * burst.trail);
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
       ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.size * ratio, 0, TAU);
       ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowBlur = damage.shadowBlur;
+    for (const p of this.items) {
+      if (!p.active || p.kind !== 1) continue;
+      const ratio = p.life / p.maxLife;
+      ctx.globalAlpha = Math.min(1, ratio * damage.alphaScale);
+      ctx.font = p.big ? damage.fontBig : damage.font;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.fillText(p.text, p.x, p.y);
     }
     ctx.restore();
   }
@@ -86,7 +132,7 @@ function makeGem() {
 /** Pooled XP gems with magnet attraction and collection. */
 export class GemPool {
   /** @param {number} capacity */
-  constructor(capacity = 320) {
+  constructor(capacity = PARTICLES.gemPoolSize) {
     this.items = Array.from({ length: capacity }, makeGem);
     this.cursor = 0;
   }
@@ -114,17 +160,18 @@ export class GemPool {
   update(dt, player) {
     let collected = 0;
     const magnet = player.stats.magnet;
+    const cfg = PARTICLES.gem;
     for (const gem of this.items) {
       if (!gem.active) continue;
       const dx = player.x - gem.x;
       const dy = player.y - gem.y;
       const dist = Math.hypot(dx, dy) || 0.001;
       if (dist < magnet) {
-        const pull = 260 + (1 - dist / magnet) * 620;
+        const pull = cfg.pullBase + (1 - dist / magnet) * cfg.pullBoost;
         gem.x += (dx / dist) * pull * dt;
         gem.y += (dy / dist) * pull * dt;
       }
-      if (dist < player.radius + 12) {
+      if (dist < player.radius + cfg.collectPad) {
         gem.active = false;
         collected += gem.value;
       }
@@ -134,25 +181,44 @@ export class GemPool {
 
   /** @param {CanvasRenderingContext2D} ctx @param {number} time */
   draw(ctx, time) {
+    const cfg = PARTICLES.gem;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const gem of this.items) {
       if (!gem.active) continue;
-      const big = gem.value >= 10;
-      const color = gem.value >= 10 ? '#ffb340' : gem.value >= 5 ? '#ff3bd4' : gem.value >= 2 ? '#8dff6e' : '#51f6ff';
-      const size = big ? 11 : gem.value >= 5 ? 8 : gem.value >= 2 ? 6.5 : 5;
-      const bob = Math.sin(time * 4 + gem.phase) * 1.6;
+      const big = gem.value >= cfg.thresholds.amber;
+      const color = big
+        ? COLORS.amber
+        : gem.value >= cfg.thresholds.pink
+          ? COLORS.pink
+          : gem.value >= cfg.thresholds.green ? COLORS.green : COLORS.cyan;
+      const size = big
+        ? cfg.sizes.amber
+        : gem.value >= cfg.thresholds.pink
+          ? cfg.sizes.pink
+          : gem.value >= cfg.thresholds.green ? cfg.sizes.green : cfg.sizes.cyan;
+      const bob = Math.sin(time * cfg.bobSpeed + gem.phase) * cfg.bobAmount;
       ctx.save();
       ctx.translate(gem.x, gem.y + bob);
       ctx.rotate(Math.PI / 4);
       ctx.globalAlpha = 0.22;
       ctx.fillStyle = color;
-      ctx.fillRect(-size - 3, -size - 3, (size + 3) * 2, (size + 3) * 2);
+      ctx.fillRect(
+        -size - cfg.glowInset,
+        -size - cfg.glowInset,
+        (size + cfg.glowInset) * 2,
+        (size + cfg.glowInset) * 2,
+      );
       ctx.globalAlpha = 1;
       ctx.fillStyle = color;
       ctx.fillRect(-size / 2, -size / 2, size, size);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(-size / 5, -size / 5, size * 0.4, size * 0.4);
+      ctx.fillStyle = COLORS.white;
+      ctx.fillRect(
+        -size * cfg.innerInset,
+        -size * cfg.innerInset,
+        size * cfg.innerScale,
+        size * cfg.innerScale,
+      );
       ctx.restore();
     }
     ctx.restore();
@@ -177,14 +243,15 @@ function poly(ctx, sides, radius, rotation = 0) {
  * @param {number} time
  */
 export function drawEnemy(ctx, enemy, time) {
-  const color = enemy.hitFlash > 0 ? '#ffffff' : enemy.color;
+  const cfg = PARTICLES.enemyDraw;
+  const color = enemy.hitFlash > 0 ? COLORS.white : enemy.color;
   const flash = enemy.hitFlash > 0;
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
-  ctx.globalAlpha = 0.2;
+  ctx.globalAlpha = cfg.glowAlpha;
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(0, 0, enemy.radius + 7, 0, TAU);
+  ctx.arc(0, 0, enemy.radius + cfg.glowRadius, 0, TAU);
   ctx.fill();
   ctx.globalAlpha = 1;
   ctx.strokeStyle = color;
@@ -193,70 +260,92 @@ export function drawEnemy(ctx, enemy, time) {
     const s = enemy.radius;
     ctx.rotate(enemy.angle);
     ctx.beginPath();
-    ctx.moveTo(s * 1.4, 0);
-    ctx.lineTo(-s, s * 0.85);
-    ctx.lineTo(-s * 0.45, 0);
-    ctx.lineTo(-s, -s * 0.85);
+    ctx.moveTo(s * cfg.chaserNose, 0);
+    ctx.lineTo(-s, s * cfg.chaserBack);
+    ctx.lineTo(-s * cfg.chaserNotch, 0);
+    ctx.lineTo(-s, -s * cfg.chaserBack);
     ctx.closePath();
-    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255, 59, 107, 0.18)';
+    ctx.fillStyle = flash ? COLORS.white : COLORS.redSoft;
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = cfg.lineWidth;
     ctx.stroke();
   } else if (enemy.type === 'shooter') {
     ctx.rotate(enemy.angle);
     const s = enemy.radius;
     ctx.beginPath();
-    ctx.moveTo(s * 1.25, 0);
-    ctx.lineTo(0, s * 0.9);
+    ctx.moveTo(s * cfg.shooterNose, 0);
+    ctx.lineTo(0, s * cfg.shooterSide);
     ctx.lineTo(-s, 0);
-    ctx.lineTo(0, -s * 0.9);
+    ctx.lineTo(0, -s * cfg.shooterSide);
     ctx.closePath();
-    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255, 179, 64, 0.16)';
+    ctx.fillStyle = flash ? COLORS.white : COLORS.amberSoft;
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = cfg.lineWidth;
     ctx.stroke();
     ctx.fillStyle = color;
-    ctx.fillRect(0, -3, s * 1.1, 6);
+    ctx.fillRect(
+      0,
+      -cfg.shooterBarrelOffset,
+      s * cfg.shooterBarrel,
+      cfg.shooterBarrelHeight,
+    );
   } else if (enemy.type === 'tank') {
-    ctx.rotate(time * 0.4);
+    ctx.rotate(time * cfg.tankRotate);
     poly(ctx, 6, enemy.radius);
-    ctx.fillStyle = flash ? '#ffffff' : 'rgba(180, 92, 255, 0.17)';
+    ctx.fillStyle = flash ? COLORS.white : COLORS.violetSoft;
     ctx.fill();
-    ctx.lineWidth = 3;
+    ctx.lineWidth = cfg.tankLineWidth;
     ctx.stroke();
-    poly(ctx, 3, enemy.radius * 0.5, -time * 0.8);
-    ctx.lineWidth = 1.5;
+    poly(ctx, 3, enemy.radius * cfg.tankInnerScale, time * cfg.tankInnerRotate);
+    ctx.lineWidth = cfg.tankInnerLineWidth;
     ctx.stroke();
   } else {
     ctx.shadowColor = enemy.color;
-    ctx.shadowBlur = 26;
-    poly(ctx, 6, enemy.radius, time * 0.2);
-    ctx.fillStyle = flash ? '#ffffff' : 'rgba(255, 43, 214, 0.16)';
+    ctx.shadowBlur = cfg.bossGlowBlur;
+    poly(ctx, 6, enemy.radius, time * cfg.bossRotate);
+    ctx.fillStyle = flash ? COLORS.white : COLORS.bossSoft;
     ctx.fill();
-    ctx.lineWidth = 3;
+    ctx.lineWidth = cfg.tankLineWidth;
     ctx.stroke();
     ctx.shadowBlur = 0;
-    for (let i = 0; i < 3; i += 1) {
-      const start = time * (0.6 + i * 0.3) + i * 2;
-      ctx.globalAlpha = 0.5 - i * 0.1;
-      ctx.lineWidth = 2;
+    for (let i = 0; i < cfg.bossRings; i += 1) {
+      const start = time * (cfg.bossRingSpeedBase + i * cfg.bossRingSpeedStep)
+        + i * cfg.bossRingPhaseStep;
+      ctx.globalAlpha = cfg.bossRingAlpha - i * cfg.bossRingAlphaStep;
+      ctx.lineWidth = cfg.lineWidth;
       ctx.beginPath();
-      ctx.arc(0, 0, enemy.radius + 12 + i * 9, start, start + 2.2);
+      ctx.arc(
+        0,
+        0,
+        enemy.radius + cfg.bossRingRadius + i * cfg.bossRingGap,
+        start,
+        start + cfg.bossRingArc,
+      );
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    ctx.fillStyle = flash ? '#ffffff' : color;
+    ctx.fillStyle = flash ? COLORS.white : color;
     ctx.beginPath();
-    ctx.arc(0, 0, 17 + Math.sin(time * 6) * 3, 0, TAU);
+    ctx.arc(0, 0, cfg.bossCoreRadius + Math.sin(time * cfg.bossCoreSpeed) * cfg.bossCoreWave, 0, TAU);
     ctx.fill();
   }
   ctx.restore();
 
   if (enemy.type === 'tank' && enemy.hp < enemy.maxHp) {
     const pct = enemy.hp / enemy.maxHp;
-    ctx.fillStyle = 'rgba(4, 8, 18, 0.8)';
-    ctx.fillRect(enemy.x - 23, enemy.y - enemy.radius - 13, 46, 5);
+    ctx.fillStyle = COLORS.tankHpBack;
+    ctx.fillRect(
+      enemy.x - cfg.hpBarOffset,
+      enemy.y - enemy.radius - cfg.hpBarGap,
+      cfg.hpBarWidth,
+      cfg.hpBarHeight,
+    );
     ctx.fillStyle = enemy.color;
-    ctx.fillRect(enemy.x - 23, enemy.y - enemy.radius - 13, 46 * pct, 5);
+    ctx.fillRect(
+      enemy.x - cfg.hpBarOffset,
+      enemy.y - enemy.radius - cfg.hpBarGap,
+      cfg.hpBarWidth * pct,
+      cfg.hpBarHeight,
+    );
   }
 }

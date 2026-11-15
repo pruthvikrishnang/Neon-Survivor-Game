@@ -1,3 +1,5 @@
+import { AUDIO } from './config.js';
+
 /**
  * Tiny procedural sound engine built on the Web Audio API.
  * Every effect is synthesised on demand; no audio files are loaded.
@@ -5,7 +7,7 @@
 export class AudioEngine {
   /** @param {{volume?: number, muted?: boolean}} settings */
   constructor(settings = {}) {
-    this.volume = Number.isFinite(settings.volume) ? settings.volume : 0.6;
+    this.volume = Number.isFinite(settings.volume) ? settings.volume : AUDIO.defaultVolume;
     this.muted = Boolean(settings.muted);
     this.ctx = null;
     this.master = null;
@@ -25,8 +27,8 @@ export class AudioEngine {
       this.ctx = new Ctor();
       this.master = this.ctx.createGain();
       const limiter = this.ctx.createDynamicsCompressor();
-      limiter.threshold.value = -14;
-      limiter.ratio.value = 8;
+      limiter.threshold.value = AUDIO.limiter.threshold;
+      limiter.ratio.value = AUDIO.limiter.ratio;
       this.master.connect(limiter);
       limiter.connect(this.ctx.destination);
       this._applyGain();
@@ -58,7 +60,7 @@ export class AudioEngine {
   _applyGain() {
     if (!this.master || !this.ctx) return;
     const target = this.muted ? 0 : this.volume;
-    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, 0.015);
+    this.master.gain.setTargetAtTime(target, this.ctx.currentTime, AUDIO.gainSmoothing);
   }
 
   _ready() {
@@ -76,23 +78,43 @@ export class AudioEngine {
 
   _tone(freq, duration, type, volume, slideTo = null, delay = 0) {
     if (!this._ready()) return;
+    const env = AUDIO.envelope;
     try {
       const t0 = this.ctx.currentTime + delay;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = type;
-      osc.frequency.setValueAtTime(Math.max(20, freq), t0);
-      if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), t0 + duration);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), t0 + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      osc.frequency.setValueAtTime(Math.max(AUDIO.minFrequency, freq), t0);
+      if (slideTo) {
+        osc.frequency.exponentialRampToValueAtTime(
+          Math.max(AUDIO.minFrequency, slideTo),
+          t0 + duration,
+        );
+      }
+      gain.gain.setValueAtTime(env.floor, t0);
+      gain.gain.exponentialRampToValueAtTime(
+        Math.max(env.volumeFloor, volume),
+        t0 + env.attack,
+      );
+      gain.gain.exponentialRampToValueAtTime(env.floor, t0 + duration);
       osc.connect(gain);
       gain.connect(this.master);
       osc.start(t0);
-      osc.stop(t0 + duration + 0.03);
+      osc.stop(t0 + duration + env.stopPadding);
     } catch {
       /* audio is decorative; fail silently */
     }
+  }
+
+  _toneSpec(spec, delay = spec.delay || 0) {
+    this._tone(
+      spec.freq,
+      spec.duration,
+      spec.type,
+      spec.volume,
+      spec.slide ?? null,
+      delay,
+    );
   }
 
   _makeNoise() {
@@ -103,7 +125,7 @@ export class AudioEngine {
     return buffer;
   }
 
-  _noise(duration, volume, cutoff = 900) {
+  _noise(duration, volume, cutoff = AUDIO.noise.defaultCutoff) {
     if (!this._ready() || !this.noiseBuffer) return;
     try {
       const t0 = this.ctx.currentTime;
@@ -112,84 +134,94 @@ export class AudioEngine {
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(cutoff, t0);
-      filter.Q.value = 0.8;
+      filter.Q.value = AUDIO.noise.q;
       const gain = this.ctx.createGain();
       gain.gain.setValueAtTime(volume, t0);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+      gain.gain.exponentialRampToValueAtTime(AUDIO.envelope.floor, t0 + duration);
       src.connect(filter);
       filter.connect(gain);
       gain.connect(this.master);
       src.start(t0);
-      src.stop(t0 + duration + 0.02);
+      src.stop(t0 + duration + AUDIO.envelope.noiseStopPadding);
     } catch {
       /* ignore */
     }
   }
 
   shoot() {
-    if (!this._gate('shoot', 42)) return;
-    this._tone(840, 0.065, 'square', 0.022, 380);
+    if (!this._gate('shoot', AUDIO.gates.shoot)) return;
+    this._toneSpec(AUDIO.effects.shoot);
   }
 
   enemyShoot() {
-    if (!this._gate('enemyShoot', 70)) return;
-    this._tone(330, 0.12, 'sawtooth', 0.018, 180);
+    if (!this._gate('enemyShoot', AUDIO.gates.enemyShoot)) return;
+    this._toneSpec(AUDIO.effects.enemyShoot);
   }
 
   hit() {
-    if (!this._gate('hit', 45)) return;
-    this._tone(210, 0.05, 'square', 0.014, 120);
+    if (!this._gate('hit', AUDIO.gates.hit)) return;
+    this._toneSpec(AUDIO.effects.hit);
   }
 
   explode(big = false) {
-    if (!this._gate('explode', big ? 90 : 40)) return;
-    this._noise(big ? 0.55 : 0.2, big ? 0.22 : 0.09, big ? 320 : 700);
-    this._tone(big ? 90 : 160, big ? 0.4 : 0.14, 'sawtooth', big ? 0.09 : 0.035, 40);
+    const gate = big ? AUDIO.gates.explodeBig : AUDIO.gates.explode;
+    if (!this._gate('explode', gate)) return;
+    const cfg = big ? AUDIO.effects.explode.big : AUDIO.effects.explode.small;
+    this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
+    this._toneSpec(cfg.tone);
   }
 
   pickup() {
-    if (!this._gate('pickup', 55)) return;
-    this._tone(980, 0.07, 'sine', 0.03, 1480);
+    if (!this._gate('pickup', AUDIO.gates.pickup)) return;
+    this._toneSpec(AUDIO.effects.pickup);
   }
 
   levelUp() {
-    const notes = [523, 659, 784, 1047];
-    notes.forEach((freq, i) => this._tone(freq, 0.16, 'triangle', 0.055, null, i * 0.075));
+    const cfg = AUDIO.effects.levelUp;
+    cfg.notes.forEach((freq, i) => {
+      this._tone(freq, cfg.duration, cfg.type, cfg.volume, null, i * cfg.stagger);
+    });
   }
 
   upgrade() {
-    this._tone(660, 0.1, 'triangle', 0.05, 990);
-    this._tone(990, 0.14, 'sine', 0.035, 1320, 0.07);
+    for (const spec of AUDIO.effects.upgrade) this._toneSpec(spec);
   }
 
   hurt() {
-    if (!this._gate('hurt', 120)) return;
-    this._tone(190, 0.22, 'sawtooth', 0.07, 70);
-    this._noise(0.14, 0.06, 420);
+    if (!this._gate('hurt', AUDIO.gates.hurt)) return;
+    const cfg = AUDIO.effects.hurt;
+    this._toneSpec(cfg);
+    this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
+  }
+
+  dash() {
+    if (!this._gate('dash', AUDIO.gates.dash)) return;
+    const cfg = AUDIO.effects.dash;
+    this._toneSpec(cfg);
+    this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
   }
 
   wave() {
-    this._tone(392, 0.18, 'triangle', 0.045);
-    this._tone(587, 0.24, 'triangle', 0.04, null, 0.11);
+    for (const spec of AUDIO.effects.wave) this._toneSpec(spec);
   }
 
   waveClear() {
-    this._tone(784, 0.12, 'sine', 0.04);
-    this._tone(1047, 0.2, 'sine', 0.035, null, 0.08);
+    for (const spec of AUDIO.effects.waveClear) this._toneSpec(spec);
   }
 
   boss() {
-    this._tone(70, 0.9, 'sawtooth', 0.09, 44);
-    this._tone(105, 0.7, 'square', 0.04, 60, 0.06);
+    for (const spec of AUDIO.effects.boss) this._toneSpec(spec);
   }
 
   gameOver() {
-    const notes = [392, 330, 262, 196];
-    notes.forEach((freq, i) => this._tone(freq, 0.32, 'triangle', 0.055, null, i * 0.16));
-    this._noise(0.8, 0.06, 240);
+    const cfg = AUDIO.effects.gameOver;
+    cfg.notes.forEach((freq, i) => {
+      this._tone(freq, cfg.duration, cfg.type, cfg.volume, null, i * cfg.stagger);
+    });
+    this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
   }
 
   click() {
-    this._tone(520, 0.04, 'square', 0.025, 700);
+    this._toneSpec(AUDIO.effects.click);
   }
 }

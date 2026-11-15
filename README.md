@@ -40,12 +40,14 @@ python -m http.server 8000
 | `WASD` / arrow keys | Move |
 | Mouse | Aim; the ship auto-fires |
 | Hold left mouse | Rapid fire |
+| `Space` / `Shift` | Dash with brief invulnerability |
 | `Esc` / `P` | Pause or resume |
 | `M` | Mute / unmute |
 | `Enter` / `Space` | Start from menu, or restart after game over |
 | `R` | Restart after game over |
 | Touch, left half | Virtual joystick |
 | Touch, right half | Drag to aim and fire; auto-aims when idle |
+| Touch dash button | Dash; shows a cooldown ring until ready |
 
 ## Features
 
@@ -57,6 +59,7 @@ python -m http.server 8000
 - Score combo multiplier that decays when kills stop.
 - Player health, invulnerability frames, contact damage, and enemy projectiles.
 - Procedurally drawn arena, glowing grid, vignette, particles, explosions, and screen shake.
+- Game-feel layer: hit-stop on boss/tank impacts, spawn warning markers, floating damage numbers, bullet trails, a dash with cooldown ring, low-HP danger pulse, and slow-motion on level-up and boss death.
 - Procedural Web Audio sound effects with persisted mute and volume settings.
 - Shared all-time best persisted by the Node server in `data/all-time-best.json`, with `localStorage` fallback and migration when the server is unavailable.
 - Fixed-step 60 Hz simulation, catch-up limiting, and automatic pause when the tab loses visibility.
@@ -73,7 +76,11 @@ neon-survivor/
   data/
     all-time-best.json Shared persisted all-time best score (created automatically)
   README.md
+  CHANGELOG.md         Release notes and verification history
+  DECISIONS.md         Design decisions and development workflow
   src/
+    config.js          Central gameplay, color, audio, UI, and server tuning
+    time.js            Hit-stop and slow-motion time scaling
     main.js            Boot, event wiring, fixed-timestep game loop
     game.js            State machine, waves, scoring, upgrades, rendering
     best.js            Local/server all-time best synchronization
@@ -93,6 +100,7 @@ neon-survivor/
 
 - **Fixed internal resolution.** The simulation and canvas are always 1600x900. CSS scales the stage to the viewport while preserving 16:9, so gameplay coordinates never depend on window size.
 - **Fixed timestep.** `main.js` runs updates at a fixed 60 Hz with an accumulator, clamps long frames, and limits catch-up steps. This keeps physics, collision, and balance deterministic across refresh rates.
+- **Simulation time vs real time.** Gameplay runs through `TimeScale`, so hit-stop freezes only simulation while rendering, shake decay, particles, trails, and the HUD keep animating. Priority is pause/level-up, then hit-stop, then slow-motion.
 - **No camera.** The arena is intentionally a single fixed screen. This keeps the arcade-siege feel, simplifies touch controls, and ensures every threat is visible.
 - **Always-on auto-fire.** The ship fires toward the cursor automatically; holding the mouse increases the fire rate. This keeps the game playable with one hand and makes the upgrade draft the main source of tactical choice.
 - **Broad-phase collisions.** Enemies are inserted into a uniform spatial grid. Player bullet queries include a margin for large enemies so tanks and bosses cannot be missed when their centers sit in adjacent cells.
@@ -103,6 +111,11 @@ neon-survivor/
 - **Persistent all-time best.** `server.mjs` exposes `GET /api/best` and `POST /api/best`. It stores only the highest submitted score in `data/all-time-best.json`; reloads and restarts read that file, so a new lower score cannot become the high score. The browser also keeps a local copy and merges it upward on startup, so an existing local best seeds the server and a server best replaces stale browser data. With plain static hosting, the game silently falls back to per-browser `localStorage`.
 - **Safe failure handling.** All storage and API access is wrapped. If `localStorage` is blocked or the persistence server is unreachable, scores and settings still work in memory and local storage for the session.
 - **Testable logic.** Wave math, scaling, collision, spatial queries, upgrade application, XP thresholds, boss patterns, and storage fallbacks are separated from the DOM and covered by Node tests.
+- **Central tuning.** Gameplay constants, colors, audio parameters, UI timings, persistence keys, and server defaults live in `src/config.js`; pure mathematical and rendering geometry stays close to its drawing code.
+
+## Tuning
+
+Gameplay balance, enemy scaling, spawn rates, colors, audio, UI timings, storage keys, and server defaults are centralized in `src/config.js`. Change values there instead of editing individual modules.
 
 ## Testing
 
@@ -112,7 +125,7 @@ Run the logic tests with Node (no packages required):
 node tests/logic.test.js
 ```
 
-The suite covers circle overlap, adjacent-cell spatial queries, wave composition and caps, enemy scaling, upgrade stacking and caps, upgrade rolling, player levelling, boss attack patterns, and storage fallbacks.
+The suite covers circle overlap, adjacent-cell spatial queries, wave composition and caps, enemy scaling, upgrade stacking and caps, upgrade rolling, player levelling, boss attack patterns, dash cooldown/invulnerability timing, hit-stop countdown and priority, telegraph-to-spawn transitions, and storage fallbacks.
 
 The game has also been exercised in headless Chrome for startup, real menu clicks, a five-minute simulated run, pause/resume/menu/game-over transitions, all-time-best persistence across reloads and cleared local storage, a 320-enemy stress scenario, and the server API across restarts with no console errors.
 
@@ -121,10 +134,10 @@ For automation, the running game is exposed as `window.neonSurvivor`. This is in
 ## Known limitations
 
 - The arena is fixed at 1600x900 with no scrolling or camera.
-- Touch support provides a joystick and right-side aim/fire, but there is no dedicated fullscreen button or mobile-specific UI layout.
+- Touch support provides a joystick, right-side aim/fire, and a dash button, but there is no dedicated fullscreen button or mobile-specific UI layout.
 - Only the all-time best and audio settings persist; there is no run save, meta-progression, or unlock system.
 - The shared all-time best requires running `server.mjs`. Plain static hosting falls back to browser-local persistence, so different browsers or cleared browser data can differ without the Node server.
-- Pools cap bullets, particles, and gems. In extreme late-game situations, the oldest effects are recycled.
+- Pools cap bullets, particles, trails, and gems. In extreme late-game situations, the oldest effects are recycled.
 - Difficulty ramps continuously with wave number; there is no difficulty selector.
 - Audio starts only after a user gesture, as required by browser autoplay policies.
 - Balance is tuned for short arcade runs and is not intended to be a long-session roguelite.

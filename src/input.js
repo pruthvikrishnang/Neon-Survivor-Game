@@ -1,10 +1,11 @@
+import { COLORS, INPUT } from './config.js';
+
 const MOVE_KEYS = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   up: ['KeyW', 'ArrowUp'],
   down: ['KeyS', 'ArrowDown'],
 };
-const JOY_RADIUS = 72;
 const BLOCK_DEFAULT = new Set([
   'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space',
 ]);
@@ -75,7 +76,7 @@ export class Input {
     if (this.pointerType === 'touch') {
       this.touchMode = true;
       try { this.canvas.setPointerCapture(event.pointerId); } catch { /* ignore */ }
-      if (!this.joy.active && pos.x < this.worldWidth * 0.5) {
+      if (!this.joy.active && pos.x < this.worldWidth * INPUT.touchSplit) {
         this.joy = {
           active: true, id: event.pointerId, bx: pos.x, by: pos.y,
           x: pos.x, y: pos.y, dx: 0, dy: 0,
@@ -98,9 +99,9 @@ export class Input {
         let dx = pos.x - this.joy.bx;
         let dy = pos.y - this.joy.by;
         const len = Math.hypot(dx, dy);
-        if (len > JOY_RADIUS) {
-          dx = (dx / len) * JOY_RADIUS;
-          dy = (dy / len) * JOY_RADIUS;
+        if (len > INPUT.joystickRadius) {
+          dx = (dx / len) * INPUT.joystickRadius;
+          dy = (dy / len) * INPUT.joystickRadius;
         }
         this.joy.dx = dx;
         this.joy.dy = dy;
@@ -146,8 +147,8 @@ export class Input {
     let x = 0;
     let y = 0;
     if (this.joy.active) {
-      x = this.joy.dx / JOY_RADIUS;
-      y = this.joy.dy / JOY_RADIUS;
+      x = this.joy.dx / INPUT.joystickRadius;
+      y = this.joy.dy / INPUT.joystickRadius;
     } else {
       if (this._anyDown(MOVE_KEYS.left)) x -= 1;
       if (this._anyDown(MOVE_KEYS.right)) x += 1;
@@ -192,22 +193,22 @@ export class Input {
   /** @param {CanvasRenderingContext2D} ctx @param {number} time */
   drawJoystick(ctx, time) {
     if (!this.joy.active) return;
-    const pulse = 0.55 + Math.sin(time * 8) * 0.1;
+    const pulse = INPUT.pulseBase + Math.sin(time * INPUT.pulseSpeed) * INPUT.pulseAmplitude;
     ctx.save();
-    ctx.globalAlpha = 0.4;
-    ctx.strokeStyle = '#51f6ff';
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = INPUT.joystickAlpha;
+    ctx.strokeStyle = COLORS.cyan;
+    ctx.lineWidth = INPUT.lineWidth;
     ctx.beginPath();
-    ctx.arc(this.joy.bx, this.joy.by, JOY_RADIUS, 0, Math.PI * 2);
+    ctx.arc(this.joy.bx, this.joy.by, INPUT.joystickRadius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.globalAlpha = pulse;
-    ctx.fillStyle = 'rgba(81, 246, 255, 0.18)';
+    ctx.fillStyle = COLORS.cyanJoystick;
     ctx.beginPath();
-    ctx.arc(this.joy.x, this.joy.y, 30, 0, Math.PI * 2);
+    ctx.arc(this.joy.x, this.joy.y, INPUT.knobRadius, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#bafcff';
+    ctx.strokeStyle = COLORS.cyanKnob;
     ctx.beginPath();
-    ctx.arc(this.joy.x, this.joy.y, 30, 0, Math.PI * 2);
+    ctx.arc(this.joy.x, this.joy.y, INPUT.knobRadius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
