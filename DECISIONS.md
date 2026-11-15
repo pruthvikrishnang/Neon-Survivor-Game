@@ -1,5 +1,66 @@
 # Decisions
 
+## 2026-11-15: Depth pass with four weapons and level-gated evolutions
+
+### Context
+
+The game had one projectile pattern and seven generic upgrades. New enemies and bosses would add little variety if every run still drafted the same cards.
+
+### Decision
+
+Add Pulse, Scatter, Lance, and orbiting blades. Each weapon declares its own upgrade pool, fire pattern, and derived stats in `src/config/weapons.js`. Add weapon-specific upgrades, two conditional synergies, and evolutions that appear only at levels 10 and 20. Evolution cards are forced to the front of the draft and replace a regular slot.
+
+### Consequences
+
+- Weapon choice changes both combat range and the available draft.
+- Synergies require explicit prerequisite levels, so they read as build goals rather than random power spikes.
+- Evolutions are rare enough to feel like run-defining moments without adding a separate meta tree.
+- All the new tuning stays in config modules rather than spreading through gameplay code.
+
+## 2026-11-15: Persistent Codex without permanent power
+
+### Context
+
+Players had no record of what they had encountered, and the game had no lightweight reason to keep playing across runs.
+
+### Decision
+
+Track seen enemies, boss kinds, and upgrade cards in `localStorage` under a dedicated key. The Codex is informational only: it never grants stats or unlocks. Boss entries use the boss kind, while tank splits and summoner minions reveal the Mite entry. Storage failures degrade to in-memory progress for the session.
+
+### Consequences
+
+- Discovery persists without turning the game into a permanent-progression grind.
+- Corrupt or blocked storage cannot break a run.
+- Codex writes happen only when a new entry is seen, so repeated spawns do not hit storage every frame.
+
+## 2026-11-15: Boss rotation and readable phase changes
+
+### Decision
+
+Cycle Warden, Weaver, and Colossus across boss waves. Each kind owns three patterns and an enraged phase triggered once below 50% health. Phase two increases projectile count or spread, raises speed, and shortens the attack cycle.
+
+### Consequences
+
+- Boss waves stay surprising across a longer run.
+- The 50% threshold gives a clear mid-fight escalation point.
+- Pattern data lives in config, while `src/bosses/index.js` only executes it.
+
+## 2026-11-15: Split modules behind stable barrels
+
+### Context
+
+Several files had crossed 300 lines, and the depth pass would add more code.
+
+### Decision
+
+Split config, weapons, enemies, particles, game orchestration, and UI into focused modules. Keep the original files as thin re-export barrels so imports, tests, and debugging hooks keep working. Split CSS by responsibility and load the files in order from `index.html`.
+
+### Consequences
+
+- Every source, style, test, and HTML file stays under 300 lines.
+- Import paths such as `./src/weapons.js` and `./src/config.js` remain stable.
+- Tests split into focused suites under `tests/lib/` while `node tests/logic.test.js` remains the entry point.
+
 ## 2026-11-15: Centralize tunable values in `src/config.js`
 
 ### Context
@@ -16,7 +77,7 @@ Pure structural values remain local: loop indices, unit conversions, array offse
 
 - Balance changes now happen in one file.
 - Module-level exports such as `BASE_STATS`, `ENEMY_TYPES`, and `UPGRADES` are preserved by re-exporting config values, so existing tests and debug code keep working.
-- The config file is intentionally larger than other modules. It is a reference file, not executable game logic.
+- Config is a reference layer, not executable game logic. It was later split into domain modules behind `src/config.js` when it exceeded the 300-line guideline.
 - No new dependencies or build step were introduced.
 
 ## 2026-11-15: Preserve behavior during the config refactor

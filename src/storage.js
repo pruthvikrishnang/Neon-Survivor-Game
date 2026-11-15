@@ -2,6 +2,7 @@ import { SERVER, STORAGE } from './config.js';
 
 const BEST_KEY = STORAGE.bestKey;
 const SETTINGS_KEY = STORAGE.settingsKey;
+const CODEX_KEY = STORAGE.codexKey;
 const DEFAULT_SETTINGS = STORAGE.defaultSettings;
 
 function readJSON(key, fallback) {
@@ -67,6 +68,32 @@ export function saveSettings(settings) {
   return writeJSON(SETTINGS_KEY, {
     volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : DEFAULT_SETTINGS.volume,
     muted: Boolean(settings.muted),
+  });
+}
+
+/**
+ * Load the persistent Codex, falling back to empty encounter sets.
+ * @returns {{enemies: Record<string, boolean>, upgrades: Record<string, boolean>}}
+ */
+export function loadCodex() {
+  const raw = readJSON(CODEX_KEY, null);
+  if (!raw || typeof raw !== 'object') return { enemies: {}, upgrades: {} };
+  return {
+    enemies: raw.enemies && typeof raw.enemies === 'object' ? raw.enemies : {},
+    upgrades: raw.upgrades && typeof raw.upgrades === 'object' ? raw.upgrades : {},
+  };
+}
+
+/**
+ * Persist Codex encounter sets. Failures are intentionally ignored.
+ * @param {{enemies: Record<string, boolean>, upgrades: Record<string, boolean>}} codex
+ * @returns {boolean}
+ */
+export function saveCodex(codex) {
+  if (!codex) return false;
+  return writeJSON(CODEX_KEY, {
+    enemies: codex.enemies || {},
+    upgrades: codex.upgrades || {},
   });
 }
 

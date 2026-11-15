@@ -14,14 +14,16 @@ const game = new Game({ canvas, ui, audio, input });
 window.neonSurvivor = game;
 
 ui.setHandlers({
-  start: () => game.start(),
+  start: () => game.start(ui.getSelectedWeapon()),
   resume: () => game.resume(),
-  restart: () => game.start(),
+  restart: () => game.start(ui.getSelectedWeapon()),
   menu: () => game.quitToMenu(),
   pause: () => game.togglePause(),
   dash: () => game.requestDash(),
   toggleMute: () => game.toggleMute(),
   volume: (value) => game.setVolume(value),
+  codex: () => game.openCodex(),
+  codexClose: () => game.closeCodex(),
   click: () => audio.click(),
 });
 ui.setMuted(audio.muted);

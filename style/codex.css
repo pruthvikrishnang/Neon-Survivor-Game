@@ -1,0 +1,40 @@
+.codex-card {
+  width: min(980px, 96%);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.codex-list { display: flex; flex-direction: column; gap: 18px; margin-bottom: 18px; text-align: left; }
+.codex-section-title {
+  margin: 0 0 8px;
+  color: var(--cyan);
+  font-size: clamp(9px, 0.9vw, 12px);
+  letter-spacing: 0.28em;
+  font-weight: 400;
+}
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+.codex-grid.upgrades { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.codex-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 54px;
+  padding: 8px 9px;
+  border: 1px solid rgba(81, 246, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(81, 246, 255, 0.035);
+}
+.codex-entry.locked { opacity: 0.42; border-style: dashed; }
+.codex-entry.evolution { border-color: rgba(255, 179, 64, 0.55); background: rgba(255, 179, 64, 0.05); }
+.codex-name { color: var(--text); font-size: clamp(9px, 0.8vw, 12px); letter-spacing: 0.08em; }
+.codex-meta { color: var(--muted); font-size: clamp(7px, 0.68vw, 10px); line-height: 1.4; letter-spacing: 0.04em; }
+.codex-entry.evolution .codex-name { color: var(--amber); }
+
+@media (max-width: 720px), (max-height: 520px) {
+  .codex-grid, .codex-grid.upgrades { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .codex-card { max-height: 94vh; }
+  .codex-entry { min-height: 0; }
+}
