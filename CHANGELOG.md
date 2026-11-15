@@ -19,6 +19,7 @@ All notable changes to Neon Survivor are documented here.
 
 - Spawn placement now rejects positions closer than 220px to the player.
 - Wave clear waits for pending telegraphs as well as live enemies.
+- The movement vector is read once per simulation frame and shared by dash checks and player movement.
 - Particles and bullet trails update on real time, so hit-stop and slow-motion do not freeze visual feedback.
 - README controls, feature list, architecture, structure, and limitations updated.
 
