@@ -4,6 +4,14 @@ A complete, dependency-free top-down arena survival shooter built with HTML5 Can
 
 No build step, no external assets, no CDNs, no image or audio files. Every sprite, effect, and sound is generated procedurally at runtime.
 
+## Play for free
+
+Try **Neon Survivor** for free in your browser — no install or signup:
+
+https://pruthvikrishnang.github.io/Neon-Survivor-Game/
+
+The live GitHub Pages version keeps your best score in browser `localStorage`. For the shared server-side all-time best, run the included Node server below.
+
 ## Run
 
 ES modules require an HTTP origin, so open the game through a local server rather than double-clicking `index.html`.
