@@ -154,13 +154,14 @@ export class Game {
   _updatePlaying(dt) {
     const player = this.player;
     const aim = this._aimPoint();
+    const move = this.input.moveVector();
     const wantsDash = this._dashQueued
       || this.input.consume('Space')
       || this.input.consume('ShiftLeft')
       || this.input.consume('ShiftRight');
     this._dashQueued = false;
-    if (wantsDash && player.tryDash(this.input.moveVector(), aim)) this.audio.dash();
-    player.update(dt, this.input.moveVector(), aim);
+    if (wantsDash && player.tryDash(move, aim)) this.audio.dash();
+    player.update(dt, move, aim);
     this.enemies.update(dt, player);
     if (this.state !== 'playing') return;
     this.weapons.update(dt, player, aim, this.enemies.grid, this.input.isFiring());
