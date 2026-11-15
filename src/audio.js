@@ -194,6 +194,13 @@ export class AudioEngine {
     this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
   }
 
+  dash() {
+    if (!this._gate('dash', AUDIO.gates.dash)) return;
+    const cfg = AUDIO.effects.dash;
+    this._toneSpec(cfg);
+    this._noise(cfg.noiseDuration, cfg.noiseVolume, cfg.cutoff);
+  }
+
   wave() {
     for (const spec of AUDIO.effects.wave) this._toneSpec(spec);
   }

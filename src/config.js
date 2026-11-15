@@ -46,6 +46,40 @@ export const COLORS = Object.freeze({
   vignetteEdge: 'rgba(0, 0, 0, 0.62)',
   tankHpBack: 'rgba(4, 8, 18, 0.8)',
   hitFlashRgb: '255, 42, 92',
+  dangerVignetteClear: 'rgba(255, 28, 80, 0)',
+  dangerVignetteEdge: 'rgba(255, 28, 80, 0.72)',
+  dashRingBack: 'rgba(81, 246, 255, 0.2)',
+  dashRingReady: 'rgba(81, 246, 255, 0.4)',
+});
+
+export const TIME = Object.freeze({
+  hitStop: Object.freeze({
+    bossHitFrames: 2,
+    bossHitCooldown: 0.12,
+    bossDeathFrames: 4,
+    tankDeathFrames: 3,
+  }),
+  slowMo: Object.freeze({
+    scale: 0.34,
+    levelUpDuration: 0.45,
+    bossDeathDuration: 0.7,
+  }),
+});
+
+export const DASH = Object.freeze({
+  duration: 0.16,
+  speed: 1050,
+  cooldown: 1.15,
+  minInput: 0.001,
+  ring: Object.freeze({
+    radiusPad: 11,
+    width: 3,
+    readyAlpha: 0.38,
+    cooldownAlpha: 0.92,
+    readyPulseSpeed: 4,
+    readyPulseAmp: 0.08,
+    startAngle: -Math.PI / 2,
+  }),
 });
 
 export const PLAYER = Object.freeze({
@@ -130,7 +164,20 @@ export const ENEMIES = Object.freeze({
     alivePerWave: 2,
     aliveMaxExtra: 24,
     margin: 44,
-    attempts: 8,
+    attempts: 12,
+    safeDistance: 220,
+    telegraphDuration: 0.5,
+  }),
+  telegraph: Object.freeze({
+    radiusPad: 12,
+    pulseSpeed: 15,
+    pulseScale: 0.16,
+    alphaBase: 0.42,
+    alphaPulse: 0.34,
+    lineWidth: 2,
+    coreRadius: 3,
+    fillAlpha: 0.16,
+    tickLength: 6,
   }),
   boss: Object.freeze({
     hpWaveStart: 5,
@@ -206,6 +253,14 @@ export const WEAPONS = Object.freeze({
   }),
   cull: Object.freeze({ playerMargin: 40, enemyMargin: 60 }),
   queryMargin: 60,
+  trails: Object.freeze({
+    poolSize: 900,
+    interval: 0.035,
+    life: 0.14,
+    length: 0.028,
+    width: 2.4,
+    alpha: 0.34,
+  }),
   draw: Object.freeze({
     playerTrail: 0.018,
     playerLineWidth: 3,
@@ -242,6 +297,16 @@ export const PARTICLES = Object.freeze({
     dragSpread: 2,
     alphaScale: 1.4,
     trail: 0.018,
+  }),
+  damage: Object.freeze({
+    life: 0.72,
+    riseSpeed: 78,
+    drift: 28,
+    drag: 1.8,
+    alphaScale: 1.45,
+    shadowBlur: 8,
+    font: '700 19px "Consolas", "Courier New", monospace',
+    fontBig: '700 28px "Consolas", "Courier New", monospace',
   }),
   gem: Object.freeze({
     pullBase: 260,
@@ -361,6 +426,14 @@ export const UI = Object.freeze({
     outerFactor: 0.68,
     edgeAlpha: 0.62,
   }),
+  dangerVignette: Object.freeze({
+    threshold: 0.3,
+    innerFactor: 0.22,
+    outerFactor: 0.74,
+    alphaBase: 0.18,
+    alphaPulse: 0.22,
+    pulseSpeed: 5.2,
+  }),
   reticle: Object.freeze({
     radius: 9,
     inner: 5,
@@ -390,6 +463,7 @@ export const AUDIO = Object.freeze({
     explodeBig: 90,
     pickup: 55,
     hurt: 120,
+    dash: 90,
   }),
   effects: Object.freeze({
     shoot: Object.freeze({ freq: 840, duration: 0.065, type: 'square', volume: 0.022, slide: 380 }),
@@ -400,6 +474,16 @@ export const AUDIO = Object.freeze({
       big: Object.freeze({ noiseDuration: 0.55, noiseVolume: 0.22, cutoff: 320, tone: Object.freeze({ freq: 90, duration: 0.4, type: 'sawtooth', volume: 0.09, slide: 40 }) }),
     }),
     pickup: Object.freeze({ freq: 980, duration: 0.07, type: 'sine', volume: 0.03, slide: 1480 }),
+    dash: Object.freeze({
+      freq: 420,
+      duration: 0.12,
+      type: 'sawtooth',
+      volume: 0.038,
+      slide: 1180,
+      noiseDuration: 0.08,
+      noiseVolume: 0.028,
+      cutoff: 1500,
+    }),
     levelUp: Object.freeze({ notes: Object.freeze([523, 659, 784, 1047]), duration: 0.16, type: 'triangle', volume: 0.055, stagger: 0.075 }),
     upgrade: Object.freeze([
       Object.freeze({ freq: 660, duration: 0.1, type: 'triangle', volume: 0.05, slide: 990, delay: 0 }),

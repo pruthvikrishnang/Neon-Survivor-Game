@@ -1,4 +1,4 @@
-import { COLORS, PLAYER } from './config.js';
+import { COLORS, DASH, PLAYER } from './config.js';
 
 export const BASE_STATS = PLAYER.baseStats;
 
@@ -28,6 +28,10 @@ export class Player {
     this.xp = 0;
     this.xpToNext = PLAYER.xpStart;
     this.invuln = 0;
+    this.dashTimer = 0;
+    this.dashCooldown = 0;
+    this.dashX = 0;
+    this.dashY = 0;
     this.hp = PLAYER.baseStats.maxHp;
     this.maxHp = PLAYER.baseStats.maxHp;
     this.upgrades = {
@@ -63,18 +67,66 @@ export class Player {
   }
 
   /**
-   * Move and aim.
+   * Start a dash in the movement direction, or aim direction when stationary.
+   * @param {{x:number,y:number}} move
+   * @param {{x:number,y:number}} aim
+   * @returns {boolean}
+   */
+  tryDash(move, aim) {
+    if (!this.alive || this.dashTimer > 0 || this.dashCooldown > 0) return false;
+    let dx = move.x;
+    let dy = move.y;
+    const length = Math.hypot(dx, dy);
+    if (length > DASH.minInput) {
+      dx /= length;
+      dy /= length;
+    } else {
+      const aimX = aim.x - this.x;
+      const aimY = aim.y - this.y;
+      const aimLength = Math.hypot(aimX, aimY);
+      if (aimLength > DASH.minInput) {
+        dx = aimX / aimLength;
+        dy = aimY / aimLength;
+      } else {
+        dx = Math.cos(this.aimAngle);
+        dy = Math.sin(this.aimAngle);
+      }
+    }
+    this.dashX = dx;
+    this.dashY = dy;
+    this.dashTimer = DASH.duration;
+    this.dashCooldown = DASH.cooldown;
+    this.invuln = Math.max(this.invuln, DASH.duration);
+    return true;
+  }
+
+  /**
+   * Move and aim. Dash movement replaces normal movement while active.
    * @param {number} dt
    * @param {{x:number,y:number}} move
    * @param {{x:number,y:number}} aim
    */
   update(dt, move, aim) {
     this.invuln = Math.max(0, this.invuln - dt);
-    const speed = this.stats.moveSpeed;
-    this.vx = move.x * speed;
-    this.vy = move.y * speed;
-    this.x = clamp(this.x + this.vx * dt, this.radius, this.worldWidth - this.radius);
-    this.y = clamp(this.y + this.vy * dt, this.radius, this.worldHeight - this.radius);
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    const dashDt = this.dashTimer > 0 ? Math.min(dt, this.dashTimer) : 0;
+    const normalDt = dt - dashDt;
+    if (dashDt > 0) {
+      this.dashTimer = Math.max(0, this.dashTimer - dashDt);
+      this.vx = this.dashX * DASH.speed;
+      this.vy = this.dashY * DASH.speed;
+      this.x += this.vx * dashDt;
+      this.y += this.vy * dashDt;
+    }
+    if (normalDt > 0) {
+      const speed = this.stats.moveSpeed;
+      this.vx = move.x * speed;
+      this.vy = move.y * speed;
+      this.x += this.vx * normalDt;
+      this.y += this.vy * normalDt;
+    }
+    this.x = clamp(this.x, this.radius, this.worldWidth - this.radius);
+    this.y = clamp(this.y, this.radius, this.worldHeight - this.radius);
     const dx = aim.x - this.x;
     const dy = aim.y - this.y;
     if (dx * dx + dy * dy > PLAYER.aimDeadZoneSq) this.aimAngle = Math.atan2(dy, dx);
@@ -119,6 +171,44 @@ export class Player {
   }
 
   /**
+   * Draw the dash readiness ring around the ship.
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {number} time
+   */
+  _drawDashRing(ctx, time) {
+    const cfg = DASH.ring;
+    const radius = this.radius + cfg.radiusPad;
+    const ready = this.dashCooldown <= 0;
+    ctx.save();
+    ctx.lineWidth = cfg.width;
+    ctx.strokeStyle = COLORS.dashRingBack;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    if (ready) {
+      ctx.globalAlpha = cfg.readyAlpha + Math.sin(time * cfg.readyPulseSpeed) * cfg.readyPulseAmp;
+      ctx.strokeStyle = COLORS.dashRingReady;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      const progress = 1 - this.dashCooldown / DASH.cooldown;
+      ctx.globalAlpha = cfg.cooldownAlpha;
+      ctx.strokeStyle = COLORS.cyanBright;
+      ctx.beginPath();
+      ctx.arc(
+        this.x,
+        this.y,
+        radius,
+        cfg.startAngle,
+        cfg.startAngle + Math.PI * 2 * progress,
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
    * Draw the ship, shield and aim guide.
    * @param {CanvasRenderingContext2D} ctx
    * @param {number} time
@@ -126,6 +216,7 @@ export class Player {
   draw(ctx, time) {
     if (!this.alive) return;
     const d = PLAYER.draw;
+    this._drawDashRing(ctx, time);
     const blink = this.invuln > 0 && Math.floor(time * d.blinkRate) % 2 === 0;
     ctx.save();
     ctx.translate(this.x, this.y);

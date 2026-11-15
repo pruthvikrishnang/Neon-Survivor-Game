@@ -60,6 +60,7 @@ export class EnemyManager {
     this.handlers = handlers;
     this.grid = new SpatialGrid(width, height, WORLD.gridCell);
     this.enemies = [];
+    this.telegraphs = [];
     this.queue = [];
     this.queueIndex = 0;
     this.spawnTimer = 0;
@@ -72,6 +73,7 @@ export class EnemyManager {
 
   reset() {
     this.enemies.length = 0;
+    this.telegraphs.length = 0;
     this.queue.length = 0;
     this.queueIndex = 0;
     this.spawnTimer = 0;
@@ -85,6 +87,7 @@ export class EnemyManager {
   startWave(wave) {
     this.wave = wave;
     this.boss = null;
+    this.telegraphs.length = 0;
     const comp = waveComposition(wave);
     const types = [];
     for (let i = 0; i < comp.chasers; i += 1) types.push('chaser');
@@ -99,21 +102,34 @@ export class EnemyManager {
     this.spawnTimer = ENEMIES.spawn.initialDelay;
   }
 
-  /** Spawn one enemy; returns it so callers can reposition it. */
-  spawn(type, player) {
+  /**
+   * Spawn one enemy. Telegraphed spawns pass fixed coordinates.
+   * @param {string} type @param {object} player
+   * @param {number} [atX] @param {number} [atY]
+   */
+  spawn(type, player, atX = null, atY = null) {
     const base = ENEMY_TYPES[type];
     if (!base) return null;
     const scale = enemyScaling(this.wave);
     const isBoss = type === 'boss';
     const cfg = ENEMIES.boss;
-    const pos = isBoss
-      ? { x: this.width / 2, y: this.height * cfg.spawnY }
-      : this._pickSpawn(player);
+    let x = atX;
+    let y = atY;
+    if (x === null || y === null) {
+      if (isBoss) {
+        x = this.width / 2;
+        y = this.height * cfg.spawnY;
+      } else {
+        const pos = this._pickSpawn(player);
+        x = pos.x;
+        y = pos.y;
+      }
+    }
     const hp = isBoss
       ? base.hp * (1 + Math.max(0, this.wave - cfg.hpWaveStart) * cfg.hpPerWave)
       : base.hp * scale.hp;
     const enemy = {
-      id: this._nextId, type, x: pos.x, y: pos.y, radius: base.radius, hp, maxHp: hp,
+      id: this._nextId, type, x, y, radius: base.radius, hp, maxHp: hp,
       speed: base.speed * scale.speed, damage: base.damage * scale.damage,
       shotDamage: base.damage * scale.damage * (isBoss ? cfg.shotDamageMultiplier : 1),
       xp: base.xp, score: base.score, color: base.color, angle: 0, dead: false,
@@ -130,7 +146,9 @@ export class EnemyManager {
 
   _pickSpawn(player) {
     const cfg = ENEMIES.spawn;
-    let best = { x: cfg.margin, y: cfg.margin };
+    const safeSq = cfg.safeDistance * cfg.safeDistance;
+    let bestX = cfg.margin;
+    let bestY = cfg.margin;
     let bestDist = -1;
     for (let i = 0; i < cfg.attempts; i += 1) {
       const edge = Math.floor(Math.random() * 4);
@@ -142,15 +160,44 @@ export class EnemyManager {
         ? cfg.margin + t * (this.height - cfg.margin * 2)
         : (edge === 0 ? cfg.margin : this.height - cfg.margin);
       const dist = (x - player.x) ** 2 + (y - player.y) ** 2;
-      if (dist > bestDist) { bestDist = dist; best = { x, y }; }
+      if (dist > bestDist) {
+        bestDist = dist;
+        bestX = x;
+        bestY = y;
+      }
     }
-    return best;
+    if (bestDist < safeSq) {
+      const corners = [
+        [cfg.margin, cfg.margin],
+        [this.width - cfg.margin, cfg.margin],
+        [cfg.margin, this.height - cfg.margin],
+        [this.width - cfg.margin, this.height - cfg.margin],
+      ];
+      for (const [x, y] of corners) {
+        const dist = (x - player.x) ** 2 + (y - player.y) ** 2;
+        if (dist > bestDist) {
+          bestDist = dist;
+          bestX = x;
+          bestY = y;
+        }
+      }
+    }
+    return { x: bestX, y: bestY };
+  }
+
+  _pickBossSpawn(player) {
+    const x = this.width / 2;
+    const y = this.height * ENEMIES.boss.spawnY;
+    const safe = ENEMIES.spawn.safeDistance;
+    if ((x - player.x) ** 2 + (y - player.y) ** 2 >= safe * safe) return { x, y };
+    return this._pickSpawn(player);
   }
 
   /** @param {number} dt @param {import('./player.js').Player} player */
   update(dt, player) {
     this.time += dt;
     this._compact();
+    this._updateTelegraphs(dt, player);
     this._spawnTick(dt, player);
     this.grid.clear();
     for (const enemy of this.enemies) if (!enemy.dead) this.grid.insert(enemy);
@@ -171,13 +218,50 @@ export class EnemyManager {
     this.enemies.length = write;
   }
 
+  _updateTelegraphs(dt, player) {
+    if (this.telegraphs.length === 0) return;
+    for (const telegraph of this.telegraphs) {
+      if (!telegraph.active) continue;
+      telegraph.remaining -= dt;
+      if (telegraph.remaining > 0) continue;
+      telegraph.active = false;
+      this.spawn(telegraph.type, player, telegraph.x, telegraph.y);
+    }
+    let write = 0;
+    for (let i = 0; i < this.telegraphs.length; i += 1) {
+      if (this.telegraphs[i].active) {
+        this.telegraphs[write] = this.telegraphs[i];
+        write += 1;
+      }
+    }
+    this.telegraphs.length = write;
+  }
+
+  _spawnTelegraph(type, player) {
+    const pos = type === 'boss' ? this._pickBossSpawn(player) : this._pickSpawn(player);
+    this.telegraphs.push({
+      active: true,
+      type,
+      x: pos.x,
+      y: pos.y,
+      remaining: ENEMIES.spawn.telegraphDuration,
+      phase: Math.random() * TAU,
+    });
+  }
+
+  countTelegraphs() {
+    let count = 0;
+    for (const telegraph of this.telegraphs) if (telegraph.active) count += 1;
+    return count;
+  }
+
   _spawnTick(dt, player) {
     if (this.queueIndex >= this.queue.length) return;
     this.spawnTimer -= dt;
     const cfg = ENEMIES.spawn;
     const aliveCap = cfg.aliveBase + Math.min(cfg.aliveMaxExtra, this.wave * cfg.alivePerWave);
-    if (this.spawnTimer > 0 || this.countAlive() >= aliveCap) return;
-    this.spawn(this.queue[this.queueIndex], player);
+    if (this.spawnTimer > 0 || this.countAlive() + this.countTelegraphs() >= aliveCap) return;
+    this._spawnTelegraph(this.queue[this.queueIndex], player);
     this.queueIndex += 1;
     this.spawnTimer = Math.max(cfg.minInterval, cfg.intervalBase - this.wave * cfg.intervalPerWave);
   }
@@ -335,7 +419,9 @@ export class EnemyManager {
 
   /** @returns {boolean} all queued enemies spawned and dead */
   isWaveCleared() {
-    return this.queueIndex >= this.queue.length && this.countAlive() === 0;
+    return this.queueIndex >= this.queue.length
+      && this.telegraphs.length === 0
+      && this.countAlive() === 0;
   }
 
   /** @returns {object|null} nearest living enemy (used for touch auto-aim) */
@@ -350,8 +436,39 @@ export class EnemyManager {
     return best;
   }
 
+  _drawTelegraph(ctx, telegraph, time) {
+    const cfg = ENEMIES.telegraph;
+    const base = ENEMY_TYPES[telegraph.type];
+    if (!base) return;
+    const pulse = 0.5 + Math.sin(time * cfg.pulseSpeed + telegraph.phase) * 0.5;
+    const radius = base.radius + cfg.radiusPad;
+    ctx.save();
+    ctx.translate(telegraph.x, telegraph.y);
+    ctx.strokeStyle = base.color;
+    ctx.fillStyle = base.color;
+    ctx.lineWidth = cfg.lineWidth;
+    ctx.globalAlpha = cfg.alphaBase + pulse * cfg.alphaPulse;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius + radius * cfg.pulseScale * pulse, 0, TAU);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-cfg.tickLength, 0);
+    ctx.lineTo(cfg.tickLength, 0);
+    ctx.moveTo(0, -cfg.tickLength);
+    ctx.lineTo(0, cfg.tickLength);
+    ctx.stroke();
+    ctx.globalAlpha = cfg.fillAlpha;
+    ctx.beginPath();
+    ctx.arc(0, 0, cfg.coreRadius + pulse * cfg.coreRadius, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
   /** @param {CanvasRenderingContext2D} ctx @param {number} time */
   draw(ctx, time) {
+    for (const telegraph of this.telegraphs) {
+      if (telegraph.active) this._drawTelegraph(ctx, telegraph, time);
+    }
     for (const enemy of this.enemies) if (!enemy.dead) drawEnemy(ctx, enemy, time);
   }
 }

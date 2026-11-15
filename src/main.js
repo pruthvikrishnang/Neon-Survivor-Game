@@ -19,6 +19,7 @@ ui.setHandlers({
   restart: () => game.start(),
   menu: () => game.quitToMenu(),
   pause: () => game.togglePause(),
+  dash: () => game.requestDash(),
   toggleMute: () => game.toggleMute(),
   volume: (value) => game.setVolume(value),
   click: () => audio.click(),

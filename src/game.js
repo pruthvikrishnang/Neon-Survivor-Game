@@ -2,10 +2,11 @@ import { Player } from './player.js';
 import { EnemyManager } from './enemies.js';
 import { WeaponSystem, rollUpgrades, applyUpgrade } from './weapons.js';
 import { ParticlePool, GemPool } from './particles.js';
-import { createArenaBackground, createVignette, drawReticle } from './ui.js';
+import { createArenaBackground, createVignette, createDangerVignette, drawReticle } from './ui.js';
 import { saveSettings } from './storage.js';
 import { BestScore } from './best.js';
-import { COLORS, GAME, PARTICLES, WORLD } from './config.js';
+import { TimeScale } from './time.js';
+import { COLORS, GAME, PARTICLES, TIME, UI, WORLD } from './config.js';
 
 /** Orchestrates the state machine, waves, scoring and rendering. */
 export class Game {
@@ -17,15 +18,13 @@ export class Game {
     this.best = new BestScore((best) => this._onAllTimeBest(best));
     this.particles = new ParticlePool(PARTICLES.poolSize);
     this.gems = new GemPool(PARTICLES.gemPoolSize);
+    this.timeScale = new TimeScale();
     this.player = new Player(WORLD.width, WORLD.height);
     this.weapons = new WeaponSystem(
       { width: WORLD.width, height: WORLD.height },
       {
         onShoot: (x, y, angle) => this._onPlayerShoot(x, y, angle),
-        onEnemyHit: (enemy, damage) => {
-          this.enemies.damage(enemy, damage);
-          this.audio.hit();
-        },
+        onEnemyHit: (enemy, damage) => this._onEnemyHit(enemy, damage),
         onPlayerHit: (damage) => this._hurt(damage),
       },
     );
@@ -37,6 +36,7 @@ export class Game {
     this._resetRun();
     this.background = createArenaBackground(WORLD.width, WORLD.height);
     this.vignette = createVignette(WORLD.width, WORLD.height);
+    this.dangerVignette = createDangerVignette(WORLD.width, WORLD.height);
     this.best.sync();
   }
 
@@ -46,6 +46,9 @@ export class Game {
     this.score = 0; this.combo = 0; this.comboTimer = 0;
     this.wave = 0; this.waveInProgress = false; this.intermission = 0;
     this.shake = 0; this.hitFlash = 0; this.upgradeOpen = false; this.pendingUpgrades = 0;
+    this._dashQueued = false;
+    this._bossHitGate = 0;
+    this.timeScale.reset();
     this.player.reset();
     this.enemies.reset();
     this.weapons.reset();
@@ -93,6 +96,11 @@ export class Game {
     else this.pause();
   }
 
+  /** Queue a dash from the touch button; keyboard input is consumed directly. */
+  requestDash() {
+    if (this.state === 'playing' && !this.upgradeOpen) this._dashQueued = true;
+  }
+
   quitToMenu() {
     this.state = 'menu';
     this.upgradeOpen = false;
@@ -116,11 +124,14 @@ export class Game {
     saveSettings({ volume: this.audio.volume, muted: this.audio.muted });
   }
 
-  /** @param {number} dt fixed timestep in seconds */
-  update(dt) {
-    this.time += dt;
-    this.shake = Math.max(0, this.shake - dt * GAME.shakeDecay);
-    this.hitFlash = Math.max(0, this.hitFlash - dt * GAME.hitFlashDecay);
+  /** @param {number} realDt fixed timestep in seconds */
+  update(realDt) {
+    this.time += realDt;
+    this.shake = Math.max(0, this.shake - realDt * GAME.shakeDecay);
+    this.hitFlash = Math.max(0, this.hitFlash - realDt * GAME.hitFlashDecay);
+    this._bossHitGate = Math.max(0, this._bossHitGate - realDt);
+    this.particles.update(realDt);
+    this.weapons.updateTrails(realDt);
     const input = this.input;
     if (input.consume('KeyM')) this.toggleMute();
     if ((input.consume('Escape') || input.consume('KeyP')) && !this.upgradeOpen) {
@@ -135,12 +146,20 @@ export class Game {
       return;
     }
     if (this.state !== 'playing' || this.upgradeOpen) return;
-    this._updatePlaying(dt);
+    const simDt = this.timeScale.advance(realDt);
+    if (simDt <= 0) return;
+    this._updatePlaying(simDt);
   }
 
   _updatePlaying(dt) {
     const player = this.player;
     const aim = this._aimPoint();
+    const wantsDash = this._dashQueued
+      || this.input.consume('Space')
+      || this.input.consume('ShiftLeft')
+      || this.input.consume('ShiftRight');
+    this._dashQueued = false;
+    if (wantsDash && player.tryDash(this.input.moveVector(), aim)) this.audio.dash();
     player.update(dt, this.input.moveVector(), aim);
     this.enemies.update(dt, player);
     if (this.state !== 'playing') return;
@@ -151,7 +170,6 @@ export class Game {
       this.audio.pickup();
       this._gainXp(xp);
     }
-    this.particles.update(dt);
     this._updateCombo(dt);
     if (this.upgradeOpen) return;
     if (!player.alive) {
@@ -193,6 +211,7 @@ export class Game {
     const levels = this.player.addXp(amount);
     if (levels <= 0) return;
     this.pendingUpgrades += levels;
+    this.timeScale.slowMotion(TIME.slowMo.levelUpDuration);
     this.audio.levelUp();
     this._openUpgrade();
   }
@@ -250,8 +269,25 @@ export class Game {
     this.particles.burst(shot.x, shot.y, shot.color, cfg.count, cfg.speed, cfg.life);
   }
 
+  _onEnemyHit(enemy, damage) {
+    const killed = enemy.hp <= damage;
+    if (enemy.isBoss) {
+      if (this._bossHitGate <= 0) {
+        this.timeScale.hitStop(TIME.hitStop.bossHitFrames);
+        this._bossHitGate = TIME.hitStop.bossHitCooldown;
+      }
+      if (killed) this.timeScale.hitStop(TIME.hitStop.bossDeathFrames);
+    } else if (killed && enemy.type === 'tank') {
+      this.timeScale.hitStop(TIME.hitStop.tankDeathFrames);
+    }
+    this.particles.damageText(enemy.x, enemy.y - enemy.radius, damage, enemy.color, enemy.isBoss);
+    this.enemies.damage(enemy, damage);
+    this.audio.hit();
+  }
+
   _onEnemyDeath(enemy) {
     const cfg = GAME.deathBurst;
+    if (enemy.isBoss) this.timeScale.slowMotion(TIME.slowMo.bossDeathDuration);
     this.combo = Math.min(GAME.comboLimit, this.combo + 1);
     this.comboTimer = GAME.comboDuration;
     this.score += Math.round(enemy.score * this._multiplier());
@@ -346,6 +382,18 @@ export class Game {
     }
     ctx.restore();
     ctx.drawImage(this.vignette, 0, 0);
+    if (this.state === 'playing' && this.player.alive) {
+      const cfg = UI.dangerVignette;
+      const hpRatio = this.player.hp / this.player.maxHp;
+      if (hpRatio <= cfg.threshold) {
+        const urgency = 1 - hpRatio / cfg.threshold;
+        const pulse = 0.5 + Math.sin(this.time * cfg.pulseSpeed) * 0.5;
+        ctx.save();
+        ctx.globalAlpha = (cfg.alphaBase + cfg.alphaPulse * pulse) * (0.5 + urgency * 0.5);
+        ctx.drawImage(this.dangerVignette, 0, 0);
+        ctx.restore();
+      }
+    }
     if (this.hitFlash > 0) {
       ctx.fillStyle = `rgba(${COLORS.hitFlashRgb}, ${(this.hitFlash * GAME.hitFlashAlpha).toFixed(3)})`;
       ctx.fillRect(0, 0, WORLD.width, WORLD.height);

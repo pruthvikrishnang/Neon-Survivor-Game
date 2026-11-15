@@ -29,6 +29,39 @@ Before changing code, capture a deterministic snapshot of wave composition, enem
 
 The before and after snapshots are byte-identical. `node tests/logic.test.js` passes 14/14, and headless Chrome checks cover the live menu, gameplay loop, transitions, input, and a 320-enemy stress scenario without console errors.
 
+## 2026-11-15: Separate simulation time from visual time
+
+### Context
+
+Hit-stop and slow-motion should change gameplay timing without freezing screen shake, particle bursts, damage numbers, bullet trails, or the HUD. Pauses must still stop everything.
+
+### Decision
+
+`TimeScale` converts real frame time into simulation time. The game update consumes simulation time for player, enemies, weapons, gems, combo, and wave logic, but advances particles, trails, shake, hit flash, and boss hit-stop cooldowns with real time. Priority is hard pause/level-up overlay, then hit-stop, then slow-motion, then normal time.
+
+### Consequences
+
+- Time scaling remains testable outside the DOM.
+- Visual effects continue during hit-stop, making impacts read better.
+- Paused time does not consume hit-stop or slow-motion timers.
+- Level-up slow-motion starts with the overlay and becomes visible for its remaining duration after the player picks an upgrade. This is intentional and should be playtested.
+
+## 2026-11-15: Telegraph every normal spawn but keep tank splits immediate
+
+### Context
+
+Enemies appearing at the arena edge without warning can feel unfair, especially when the player is cornered.
+
+### Decision
+
+Normal wave spawns create a 0.5s pulsing telegraph at a position at least 220px from the player, then spawn the enemy there. Pending telegraphs count as not-cleared for wave completion and against the alive cap. Tank split minis remain immediate direct spawns because they are death effects, not new wave arrivals.
+
+### Consequences
+
+- Waves take slightly longer to clear and peak alive count is unchanged.
+- Players get a visual warning and a fair chance to reposition.
+- Boss telegraphs use the boss spawn point when it is safe, otherwise a safe edge position.
+
 ## 2026-11-15: Development workflow
 
 - Start each task on a new branch.

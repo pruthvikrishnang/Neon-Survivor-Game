@@ -101,9 +101,72 @@ function makePool(size) {
   const items = Array.from({ length: size }, () => ({
     active: false, x: 0, y: 0, vx: 0, vy: 0,
     radius: WEAPONS.bullet.playerRadius, damage: 0,
-    pierce: 0, hitCount: 0, life: 0, color: WEAPONS.bullet.playerColor, hits: [],
+    pierce: 0, hitCount: 0, life: 0, trailTimer: 0,
+    color: WEAPONS.bullet.playerColor, hits: [],
   }));
   return { items, cursor: 0 };
+}
+
+function makeTrail() {
+  return {
+    active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1,
+    color: WEAPONS.bullet.playerColor,
+  };
+}
+
+/** Fixed-size visual bullet trail pool; recycles the oldest segment. */
+class TrailPool {
+  constructor(capacity = WEAPONS.trails.poolSize) {
+    this.items = Array.from({ length: capacity }, makeTrail);
+    this.cursor = 0;
+  }
+
+  reset() {
+    for (const trail of this.items) trail.active = false;
+  }
+
+  /** @param {object} bullet */
+  spawn(bullet) {
+    const cfg = WEAPONS.trails;
+    const trail = this.items[this.cursor];
+    this.cursor = (this.cursor + 1) % this.items.length;
+    trail.active = true;
+    trail.x = bullet.x;
+    trail.y = bullet.y;
+    trail.vx = bullet.vx;
+    trail.vy = bullet.vy;
+    trail.life = cfg.life;
+    trail.maxLife = cfg.life;
+    trail.color = bullet.color;
+  }
+
+  /** @param {number} dt */
+  update(dt) {
+    for (const trail of this.items) {
+      if (!trail.active) continue;
+      trail.life -= dt;
+      if (trail.life <= 0) trail.active = false;
+    }
+  }
+
+  /** @param {CanvasRenderingContext2D} ctx */
+  draw(ctx) {
+    const cfg = WEAPONS.trails;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const trail of this.items) {
+      if (!trail.active) continue;
+      const ratio = trail.life / trail.maxLife;
+      ctx.globalAlpha = ratio * cfg.alpha;
+      ctx.strokeStyle = trail.color;
+      ctx.lineWidth = cfg.width * ratio;
+      ctx.beginPath();
+      ctx.moveTo(trail.x - trail.vx * cfg.length, trail.y - trail.vy * cfg.length);
+      ctx.lineTo(trail.x, trail.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 }
 
 function obtain(pool) {
@@ -129,6 +192,7 @@ export class WeaponSystem {
     this.callbacks = callbacks;
     this.playerPool = makePool(WEAPONS.pools.player);
     this.enemyPool = makePool(WEAPONS.pools.enemy);
+    this.trails = new TrailPool();
     this.cooldown = 0;
     this._query = [];
   }
@@ -136,7 +200,13 @@ export class WeaponSystem {
   reset() {
     for (const bullet of this.playerPool.items) bullet.active = false;
     for (const bullet of this.enemyPool.items) bullet.active = false;
+    this.trails.reset();
     this.cooldown = 0;
+  }
+
+  /** Visual trails run on real time, independent of hit-stop and slow-motion. */
+  updateTrails(dt) {
+    this.trails.update(dt);
   }
 
   _spawn(pool, x, y, angle, speed, damage, radius, pierce, color) {
@@ -151,9 +221,18 @@ export class WeaponSystem {
     bullet.radius = radius;
     bullet.pierce = pierce;
     bullet.hitCount = 0;
+    bullet.trailTimer = 0;
     bullet.life = WEAPONS.bullet.life;
     bullet.color = color;
     bullet.hits.length = 0;
+  }
+
+  _maybeTrail(bullet, dt) {
+    bullet.trailTimer -= dt;
+    if (bullet.trailTimer <= 0) {
+      this.trails.spawn(bullet);
+      bullet.trailTimer += WEAPONS.trails.interval;
+    }
   }
 
   /**
@@ -210,6 +289,7 @@ export class WeaponSystem {
       bullet.life -= dt;
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
+      this._maybeTrail(bullet, dt);
       if (bullet.life <= 0 || bullet.x < -margin || bullet.y < -margin
         || bullet.x > world.width + margin || bullet.y > world.height + margin) {
         bullet.active = false;
@@ -245,6 +325,7 @@ export class WeaponSystem {
       bullet.life -= dt;
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
+      this._maybeTrail(bullet, dt);
       if (bullet.life <= 0 || bullet.x < -margin || bullet.y < -margin
         || bullet.x > world.width + margin || bullet.y > world.height + margin) {
         bullet.active = false;
@@ -260,6 +341,7 @@ export class WeaponSystem {
   /** @param {CanvasRenderingContext2D} ctx */
   draw(ctx) {
     const d = WEAPONS.draw;
+    this.trails.draw(ctx);
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.playerPool.items) {

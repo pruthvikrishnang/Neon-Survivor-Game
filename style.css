@@ -122,6 +122,29 @@ body {
 }
 .icon-btn:hover { background: rgba(81, 246, 255, 0.18); }
 
+.dash-btn {
+  position: absolute;
+  right: clamp(14px, 2.4vw, 34px);
+  bottom: clamp(58px, 8vw, 108px);
+  width: clamp(62px, 7vw, 88px);
+  height: clamp(62px, 7vw, 88px);
+  border-radius: 50%;
+  border: 1px solid rgba(81, 246, 255, 0.55);
+  background: radial-gradient(circle, rgba(81, 246, 255, 0.16), rgba(5, 9, 24, 0.82));
+  box-shadow: 0 0 18px rgba(81, 246, 255, 0.28), inset 0 0 14px rgba(81, 246, 255, 0.12);
+  color: var(--cyan);
+  font: inherit;
+  font-size: clamp(9px, 0.9vw, 13px);
+  letter-spacing: 0.16em;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.dash-btn:active {
+  transform: scale(0.94);
+  background: radial-gradient(circle, rgba(81, 246, 255, 0.32), rgba(5, 9, 24, 0.82));
+}
+
 .combo {
   position: absolute;
   right: clamp(12px, 2.4vw, 34px);

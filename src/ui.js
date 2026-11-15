@@ -15,6 +15,7 @@ export class UI {
       menuBest: $('menu-best'), cards: $('upgrade-cards'), newBest: $('new-best'),
       goScore: $('go-score'), goWave: $('go-wave'), goBest: $('go-best'),
       menuMute: $('menu-mute-btn'), volume: $('volume-slider'), mute: $('mute-btn'),
+      dash: $('dash-btn'),
       start: $('start-btn'), resume: $('resume-btn'), pauseRestart: $('pause-restart-btn'),
       pauseMenu: $('pause-menu-btn'), pauseBtn: $('pause-btn'), goRestart: $('go-restart-btn'),
       goMenu: $('go-menu-btn'),
@@ -42,7 +43,12 @@ export class UI {
     bind(this.el.mute, handlers.toggleMute);
     bind(this.el.menuMute, handlers.toggleMute);
     this.el.volume.addEventListener('input', (event) => {
-      handlers.volume(Number(event.target.value) / 100);
+      handlers.volume(Number(event.target.value) / UI_CONFIG.volumeScale);
+    });
+    this.el.dash.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.el.dash.blur();
+      handlers.dash?.();
     });
   }
 
@@ -144,6 +150,8 @@ export class UI {
     } else {
       this.el.combo.classList.add('hidden');
     }
+    const showDash = game.input.isTouchMode() && game.state === 'playing' && !game.upgradeOpen;
+    this.el.dash.classList.toggle('hidden', !showDash);
     if (boss) {
       this.el.bossWrap.classList.remove('hidden');
       this._text(this.el.bossName, UI_CONFIG.bossName);
@@ -263,6 +271,28 @@ export function createVignette(width, height) {
   );
   gradient.addColorStop(0, COLORS.vignetteClear);
   gradient.addColorStop(1, COLORS.vignetteEdge);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  return canvas;
+}
+
+/**
+ * Pre-render the red low-HP pulse overlay.
+ * @param {number} width @param {number} height
+ * @returns {HTMLCanvasElement}
+ */
+export function createDangerVignette(width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const cfg = UI_CONFIG.dangerVignette;
+  const gradient = ctx.createRadialGradient(
+    width / 2, height / 2, height * cfg.innerFactor,
+    width / 2, height / 2, width * cfg.outerFactor,
+  );
+  gradient.addColorStop(0, COLORS.dangerVignetteClear);
+  gradient.addColorStop(1, COLORS.dangerVignetteEdge);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   return canvas;
