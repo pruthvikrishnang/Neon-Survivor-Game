@@ -1,3 +1,5 @@
+import { COLORS, WEAPONS, WORLD } from './config.js';
+
 /**
  * Circle-vs-circle overlap used by bullets, pickups and contact damage.
  * @returns {boolean}
@@ -11,7 +13,7 @@ export function circleOverlap(ax, ay, ar, bx, by, br) {
 
 /** Uniform-grid broad phase. Each entity is inserted once by its centre cell. */
 export class SpatialGrid {
-  constructor(width, height, cellSize = 80) {
+  constructor(width, height, cellSize = WORLD.gridCell) {
     this.cellSize = cellSize;
     this.cols = Math.max(1, Math.ceil(width / cellSize));
     this.rows = Math.max(1, Math.ceil(height / cellSize));
@@ -59,15 +61,7 @@ export class SpatialGrid {
 }
 
 /** Upgrade definitions. `describe` returns copy for the next level. */
-export const UPGRADES = [
-  { id: 'fireRate', name: 'Overclock', tag: 'RATE', max: 8, describe: () => 'Fire 18% faster. Holding fire pushes it further.' },
-  { id: 'damage', name: 'Heavy Rounds', tag: 'DMG', max: 7, describe: () => 'Bullet damage +30%.' },
-  { id: 'multishot', name: 'Split Shot', tag: 'SPLIT', max: 4, describe: () => 'Add +1 projectile to every volley.' },
-  { id: 'pierce', name: 'Rail Core', tag: 'PIERCE', max: 3, describe: () => 'Bullets punch through +1 extra enemy.' },
-  { id: 'speed', name: 'Thrusters', tag: 'MOVE', max: 4, describe: () => 'Move speed +10%.' },
-  { id: 'maxHp', name: 'Hull Plating', tag: 'HP', max: 5, describe: () => 'Max HP +22 and instantly restore 22 HP.' },
-  { id: 'magnet', name: 'Mag Field', tag: 'MAGNET', max: 4, describe: () => 'XP pickup radius +60%.' },
-];
+export const UPGRADES = WEAPONS.upgrades;
 
 /**
  * Apply one level of an upgrade.
@@ -92,7 +86,7 @@ export function applyUpgrade(player, id) {
  * @param {() => number} [rng]
  * @returns {typeof UPGRADES}
  */
-export function rollUpgrades(player, count = 3, rng = Math.random) {
+export function rollUpgrades(player, count = WEAPONS.fire.choices, rng = Math.random) {
   const available = UPGRADES.filter((upgrade) => (player.upgrades[upgrade.id] || 0) < upgrade.max);
   for (let i = available.length - 1; i > 0; i -= 1) {
     const j = Math.floor(rng() * (i + 1));
@@ -105,8 +99,9 @@ export function rollUpgrades(player, count = 3, rng = Math.random) {
 
 function makePool(size) {
   const items = Array.from({ length: size }, () => ({
-    active: false, x: 0, y: 0, vx: 0, vy: 0, radius: 4, damage: 0,
-    pierce: 0, hitCount: 0, life: 0, color: '#51f6ff', hits: [],
+    active: false, x: 0, y: 0, vx: 0, vy: 0,
+    radius: WEAPONS.bullet.playerRadius, damage: 0,
+    pierce: 0, hitCount: 0, life: 0, color: WEAPONS.bullet.playerColor, hits: [],
   }));
   return { items, cursor: 0 };
 }
@@ -132,8 +127,8 @@ export class WeaponSystem {
   constructor(world, callbacks = {}) {
     this.world = world;
     this.callbacks = callbacks;
-    this.playerPool = makePool(420);
-    this.enemyPool = makePool(320);
+    this.playerPool = makePool(WEAPONS.pools.player);
+    this.enemyPool = makePool(WEAPONS.pools.enemy);
     this.cooldown = 0;
     this._query = [];
   }
@@ -156,7 +151,7 @@ export class WeaponSystem {
     bullet.radius = radius;
     bullet.pierce = pierce;
     bullet.hitCount = 0;
-    bullet.life = 2.1;
+    bullet.life = WEAPONS.bullet.life;
     bullet.color = color;
     bullet.hits.length = 0;
   }
@@ -168,24 +163,26 @@ export class WeaponSystem {
   fireEnemy(shot) {
     this._spawn(
       this.enemyPool, shot.x, shot.y, shot.angle, shot.speed,
-      shot.damage, shot.radius || 7, 0, shot.color || '#ff3bd4',
+      shot.damage, shot.radius || WEAPONS.bullet.enemyRadius, 0,
+      shot.color || WEAPONS.bullet.enemyColor,
     );
   }
 
   _fireVolley(player, aim, rapid) {
     const baseAngle = Math.atan2(aim.y - player.y, aim.x - player.x);
     const shots = player.stats.shots;
-    const spread = 0.09;
+    const spread = WEAPONS.fire.spread;
     for (let i = 0; i < shots; i += 1) {
       const angle = baseAngle + (i - (shots - 1) / 2) * spread;
-      const muzzleX = player.x + Math.cos(angle) * 22;
-      const muzzleY = player.y + Math.sin(angle) * 22;
+      const muzzleX = player.x + Math.cos(angle) * WEAPONS.fire.muzzleOffset;
+      const muzzleY = player.y + Math.sin(angle) * WEAPONS.fire.muzzleOffset;
       this._spawn(
         this.playerPool, muzzleX, muzzleY, angle, player.stats.bulletSpeed,
-        player.stats.damage, 4, player.stats.pierce, '#8ffbff',
+        player.stats.damage, WEAPONS.bullet.playerRadius, player.stats.pierce,
+        WEAPONS.bullet.playerColor,
       );
     }
-    this.cooldown = player.stats.fireInterval * (rapid ? 0.55 : 1);
+    this.cooldown = player.stats.fireInterval * (rapid ? WEAPONS.fire.rapidMultiplier : 1);
     this.callbacks.onShoot?.(player.x, player.y, baseAngle);
   }
 
@@ -207,18 +204,24 @@ export class WeaponSystem {
   _updatePlayerBullets(dt, grid) {
     const { items } = this.playerPool;
     const world = this.world;
+    const margin = WEAPONS.cull.playerMargin;
     for (const bullet of items) {
       if (!bullet.active) continue;
       bullet.life -= dt;
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
-      if (bullet.life <= 0 || bullet.x < -40 || bullet.y < -40
-        || bullet.x > world.width + 40 || bullet.y > world.height + 40) {
+      if (bullet.life <= 0 || bullet.x < -margin || bullet.y < -margin
+        || bullet.x > world.width + margin || bullet.y > world.height + margin) {
         bullet.active = false;
         continue;
       }
       if (!grid) continue;
-      const candidates = grid.queryCircle(bullet.x, bullet.y, bullet.radius + 60, this._query);
+      const candidates = grid.queryCircle(
+        bullet.x,
+        bullet.y,
+        bullet.radius + WEAPONS.queryMargin,
+        this._query,
+      );
       for (const enemy of candidates) {
         if (enemy.dead || bullet.hits.includes(enemy.id)) continue;
         if (!circleOverlap(bullet.x, bullet.y, bullet.radius, enemy.x, enemy.y, enemy.radius)) continue;
@@ -236,13 +239,14 @@ export class WeaponSystem {
   _updateEnemyBullets(dt, player) {
     const { items } = this.enemyPool;
     const world = this.world;
+    const margin = WEAPONS.cull.enemyMargin;
     for (const bullet of items) {
       if (!bullet.active) continue;
       bullet.life -= dt;
       bullet.x += bullet.vx * dt;
       bullet.y += bullet.vy * dt;
-      if (bullet.life <= 0 || bullet.x < -60 || bullet.y < -60
-        || bullet.x > world.width + 60 || bullet.y > world.height + 60) {
+      if (bullet.life <= 0 || bullet.x < -margin || bullet.y < -margin
+        || bullet.x > world.width + margin || bullet.y > world.height + margin) {
         bullet.active = false;
         continue;
       }
@@ -255,36 +259,37 @@ export class WeaponSystem {
 
   /** @param {CanvasRenderingContext2D} ctx */
   draw(ctx) {
+    const d = WEAPONS.draw;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const bullet of this.playerPool.items) {
       if (!bullet.active) continue;
       ctx.strokeStyle = bullet.color;
-      ctx.lineWidth = 3;
+      ctx.lineWidth = d.playerLineWidth;
       ctx.beginPath();
-      ctx.moveTo(bullet.x - bullet.vx * 0.018, bullet.y - bullet.vy * 0.018);
+      ctx.moveTo(bullet.x - bullet.vx * d.playerTrail, bullet.y - bullet.vy * d.playerTrail);
       ctx.lineTo(bullet.x, bullet.y);
       ctx.stroke();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = COLORS.white;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, 2, 0, Math.PI * 2);
+      ctx.arc(bullet.x, bullet.y, d.playerCoreRadius, 0, Math.PI * 2);
       ctx.fill();
     }
     for (const bullet of this.enemyPool.items) {
       if (!bullet.active) continue;
-      ctx.globalAlpha = 0.22;
+      ctx.globalAlpha = d.enemyGlowAlpha;
       ctx.fillStyle = bullet.color;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius + 6, 0, Math.PI * 2);
+      ctx.arc(bullet.x, bullet.y, bullet.radius + d.enemyGlowRadius, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.fillStyle = bullet.color;
       ctx.beginPath();
       ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = COLORS.white;
       ctx.beginPath();
-      ctx.arc(bullet.x, bullet.y, bullet.radius * 0.4, 0, Math.PI * 2);
+      ctx.arc(bullet.x, bullet.y, bullet.radius * d.enemyCoreScale, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();

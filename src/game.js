@@ -5,8 +5,8 @@ import { ParticlePool, GemPool } from './particles.js';
 import { createArenaBackground, createVignette, drawReticle } from './ui.js';
 import { saveSettings } from './storage.js';
 import { BestScore } from './best.js';
-const WORLD_WIDTH = 1600;
-const WORLD_HEIGHT = 900;
+import { COLORS, GAME, PARTICLES, WORLD } from './config.js';
+
 /** Orchestrates the state machine, waves, scoring and rendering. */
 export class Game {
   /** @param {{canvas:HTMLCanvasElement,ui:object,audio:object,input:object}} deps */
@@ -14,11 +14,12 @@ export class Game {
     this.canvas = canvas; this.ctx = canvas.getContext('2d');
     this.ui = ui; this.audio = audio; this.input = input;
     this.state = 'menu'; this.time = 0;
-    this.best = new BestScore((best) => this._onAllTimeBest(best)); this.particles = new ParticlePool(900);
-    this.gems = new GemPool(320);
-    this.player = new Player(WORLD_WIDTH, WORLD_HEIGHT);
+    this.best = new BestScore((best) => this._onAllTimeBest(best));
+    this.particles = new ParticlePool(PARTICLES.poolSize);
+    this.gems = new GemPool(PARTICLES.gemPoolSize);
+    this.player = new Player(WORLD.width, WORLD.height);
     this.weapons = new WeaponSystem(
-      { width: WORLD_WIDTH, height: WORLD_HEIGHT },
+      { width: WORLD.width, height: WORLD.height },
       {
         onShoot: (x, y, angle) => this._onPlayerShoot(x, y, angle),
         onEnemyHit: (enemy, damage) => {
@@ -28,16 +29,19 @@ export class Game {
         onPlayerHit: (damage) => this._hurt(damage),
       },
     );
-    this.enemies = new EnemyManager(WORLD_WIDTH, WORLD_HEIGHT, {
+    this.enemies = new EnemyManager(WORLD.width, WORLD.height, {
       onShoot: (shot) => this._onEnemyShoot(shot),
       onDeath: (enemy) => this._onEnemyDeath(enemy),
       onContact: (damage) => this._hurt(damage),
     });
     this._resetRun();
-    this.background = createArenaBackground(WORLD_WIDTH, WORLD_HEIGHT);
-    this.vignette = createVignette(WORLD_WIDTH, WORLD_HEIGHT); this.best.sync();
+    this.background = createArenaBackground(WORLD.width, WORLD.height);
+    this.vignette = createVignette(WORLD.width, WORLD.height);
+    this.best.sync();
   }
+
   get bestScore() { return this.best.value; }
+
   _resetRun() {
     this.score = 0; this.combo = 0; this.comboTimer = 0;
     this.wave = 0; this.waveInProgress = false; this.intermission = 0;
@@ -48,6 +52,7 @@ export class Game {
     this.particles.reset();
     this.gems.reset();
   }
+
   /** Start a fresh run from any state. */
   start() {
     this.audio.init();
@@ -57,32 +62,37 @@ export class Game {
     this.ui.showPlaying();
     this.beginWave();
   }
+
   beginWave() {
     this.wave += 1;
     this.waveInProgress = true;
     this.intermission = 0;
     this.enemies.startWave(this.wave);
-    const boss = this.wave % 5 === 0;
+    const boss = this.wave % GAME.bossEvery === 0;
     this.ui.banner(`WAVE ${this.wave}`, boss ? 'BOSS INCOMING' : '');
     if (boss) this.audio.boss();
     else this.audio.wave();
   }
+
   pause() {
     if (this.state !== 'playing' || this.upgradeOpen) return;
     this.state = 'paused';
     this.input.reset();
     this.ui.showPause();
   }
+
   resume() {
     if (this.state !== 'paused') return;
     this.state = 'playing';
     this.input.reset();
     this.ui.showPlaying();
   }
+
   togglePause() {
     if (this.state === 'paused') this.resume();
     else this.pause();
   }
+
   quitToMenu() {
     this.state = 'menu';
     this.upgradeOpen = false;
@@ -90,6 +100,7 @@ export class Game {
     this.input.reset();
     this.ui.showMenu(this.bestScore);
   }
+
   /** Master mute toggle, also persisted. */
   toggleMute() {
     const muted = this.audio.toggleMuted();
@@ -97,17 +108,19 @@ export class Game {
     saveSettings({ volume: this.audio.volume, muted });
     this.audio.click();
   }
+
   /** @param {number} value 0..1 */
   setVolume(value) {
     this.audio.setVolume(value);
     this.ui.setVolume(value);
     saveSettings({ volume: this.audio.volume, muted: this.audio.muted });
   }
+
   /** @param {number} dt fixed timestep in seconds */
   update(dt) {
     this.time += dt;
-    this.shake = Math.max(0, this.shake - dt * 55);
-    this.hitFlash = Math.max(0, this.hitFlash - dt * 2.4);
+    this.shake = Math.max(0, this.shake - dt * GAME.shakeDecay);
+    this.hitFlash = Math.max(0, this.hitFlash - dt * GAME.hitFlashDecay);
     const input = this.input;
     if (input.consume('KeyM')) this.toggleMute();
     if ((input.consume('Escape') || input.consume('KeyP')) && !this.upgradeOpen) {
@@ -124,6 +137,7 @@ export class Game {
     if (this.state !== 'playing' || this.upgradeOpen) return;
     this._updatePlaying(dt);
   }
+
   _updatePlaying(dt) {
     const player = this.player;
     const aim = this._aimPoint();
@@ -150,6 +164,7 @@ export class Game {
       if (this.intermission <= 0) this.beginWave();
     }
   }
+
   _aimPoint() {
     const input = this.input;
     if (input.aim.active) return { x: input.aim.x, y: input.aim.y };
@@ -157,20 +172,23 @@ export class Game {
       const target = this.enemies.nearest(this.player.x, this.player.y);
       if (target) return { x: target.x, y: target.y };
       return {
-        x: this.player.x + Math.cos(this.player.aimAngle) * 200,
-        y: this.player.y + Math.sin(this.player.aimAngle) * 200,
+        x: this.player.x + Math.cos(this.player.aimAngle) * GAME.aimFallbackDistance,
+        y: this.player.y + Math.sin(this.player.aimAngle) * GAME.aimFallbackDistance,
       };
     }
     return { x: input.mouse.x, y: input.mouse.y };
   }
+
   _updateCombo(dt) {
     if (this.combo <= 0) return;
     this.comboTimer -= dt;
     if (this.comboTimer <= 0) this.combo = 0;
   }
+
   _multiplier() {
-    return 1 + Math.min(this.combo, 20) * 0.1;
+    return 1 + Math.min(this.combo, GAME.comboMax) * GAME.comboStep;
   }
+
   _gainXp(amount) {
     const levels = this.player.addXp(amount);
     if (levels <= 0) return;
@@ -178,12 +196,13 @@ export class Game {
     this.audio.levelUp();
     this._openUpgrade();
   }
+
   _openUpgrade() {
     if (this.upgradeOpen || this.state !== 'playing' || !this.player.alive) return;
-    const choices = rollUpgrades(this.player, 3);
+    const choices = rollUpgrades(this.player);
     if (choices.length === 0) {
       this.pendingUpgrades = 0;
-      this.player.heal(30);
+      this.player.heal(GAME.fallbackHeal);
       this.upgradeOpen = false;
       this.ui.showPlaying();
       return;
@@ -191,6 +210,7 @@ export class Game {
     this.upgradeOpen = true;
     this.ui.showLevelUp(choices, this.player.upgrades, (id) => this._pickUpgrade(id));
   }
+
   _pickUpgrade(id) {
     applyUpgrade(this.player, id);
     this.audio.upgrade();
@@ -199,53 +219,84 @@ export class Game {
     if (this.pendingUpgrades > 0) this._openUpgrade();
     else this.ui.showPlaying();
   }
+
   _clearWave() {
     this.waveInProgress = false;
-    this.intermission = 2.4;
-    const bonus = this.wave * 25;
+    this.intermission = GAME.intermission;
+    const bonus = this.wave * GAME.waveBonus;
     this.score += bonus;
-    this.player.heal(6);
+    this.player.heal(GAME.waveClearHeal);
     this.audio.waveClear();
     this.ui.banner('WAVE CLEAR', `+${bonus} SCORE`);
   }
+
   _onPlayerShoot(x, y, angle) {
+    const cfg = GAME.bursts.shoot;
     this.audio.shoot();
-    this.particles.burst(x + Math.cos(angle) * 22, y + Math.sin(angle) * 22, '#8ffbff', 2, 90, 0.16);
+    this.particles.burst(
+      x + Math.cos(angle) * GAME.bursts.shoot.offset,
+      y + Math.sin(angle) * GAME.bursts.shoot.offset,
+      COLORS.cyanBright,
+      cfg.count,
+      cfg.speed,
+      cfg.life,
+    );
   }
+
   _onEnemyShoot(shot) {
+    const cfg = GAME.bursts.enemyShoot;
     this.weapons.fireEnemy(shot);
     this.audio.enemyShoot();
-    this.particles.burst(shot.x, shot.y, shot.color, 2, 70, 0.2);
+    this.particles.burst(shot.x, shot.y, shot.color, cfg.count, cfg.speed, cfg.life);
   }
+
   _onEnemyDeath(enemy) {
-    this.combo = Math.min(99, this.combo + 1);
-    this.comboTimer = 3;
+    const cfg = GAME.deathBurst;
+    this.combo = Math.min(GAME.comboLimit, this.combo + 1);
+    this.comboTimer = GAME.comboDuration;
     this.score += Math.round(enemy.score * this._multiplier());
-    this.shake = Math.max(this.shake, enemy.isBoss ? 18 : enemy.type === 'tank' ? 5 : 2.5);
-    const count = enemy.isBoss ? 60 : enemy.type === 'tank' ? 26 : 14;
-    this.particles.burst(enemy.x, enemy.y, enemy.color, count, enemy.isBoss ? 340 : 210, enemy.isBoss ? 0.9 : 0.6);
+    this.shake = Math.max(
+      this.shake,
+      enemy.isBoss ? GAME.shake.bossDeath : enemy.type === 'tank' ? GAME.shake.tankDeath : GAME.shake.death,
+    );
+    const count = enemy.isBoss ? cfg.bossCount : enemy.type === 'tank' ? cfg.tankCount : cfg.count;
+    this.particles.burst(
+      enemy.x,
+      enemy.y,
+      enemy.color,
+      count,
+      enemy.isBoss ? cfg.bossSpeed : cfg.speed,
+      enemy.isBoss ? cfg.bossLife : cfg.life,
+    );
     this.audio.explode(enemy.isBoss);
     if (enemy.isBoss) {
-      for (let i = 0; i < 6; i += 1) {
-        const angle = (i / 6) * Math.PI * 2;
-        this.gems.spawn(enemy.x + Math.cos(angle) * 48, enemy.y + Math.sin(angle) * 48, 8);
+      for (let i = 0; i < cfg.bossGemCount; i += 1) {
+        const angle = (i / cfg.bossGemCount) * Math.PI * 2;
+        this.gems.spawn(
+          enemy.x + Math.cos(angle) * cfg.bossGemRadius,
+          enemy.y + Math.sin(angle) * cfg.bossGemRadius,
+          cfg.bossGemValue,
+        );
       }
     } else {
       this.gems.spawn(enemy.x, enemy.y, enemy.xp);
     }
   }
+
   /** @param {number} damage @returns {boolean} */
   _hurt(damage) {
     if (this.state !== 'playing' || this.upgradeOpen) return false;
     const applied = this.player.takeDamage(damage);
     if (!applied) return false;
-    this.shake = Math.max(this.shake, 9);
-    this.hitFlash = 0.42;
+    this.shake = Math.max(this.shake, GAME.shake.hit);
+    this.hitFlash = GAME.hitFlashDuration;
     this.audio.hurt();
-    this.particles.burst(this.player.x, this.player.y, '#ff3b6b', 12, 140, 0.45);
+    const cfg = GAME.bursts.hurt;
+    this.particles.burst(this.player.x, this.player.y, COLORS.red, cfg.count, cfg.speed, cfg.life);
     if (!this.player.alive) this.gameOver();
     return true;
   }
+
   gameOver() {
     if (this.state === 'gameover') return;
     this.state = 'gameover';
@@ -259,18 +310,20 @@ export class Game {
     });
     this.best.submit(this.score);
   }
+
   _onAllTimeBest(best) {
     if (this.state === 'menu') this.ui.showMenu(best);
     else if (this.state === 'gameover') {
       this.ui.showGameOver({ score: this.score, wave: this.wave, best, newBest: this.score >= best });
     }
   }
+
   /** @param {number} [alpha] unused interpolation factor, kept for the loop API */
   render(alpha = 1) {
     void alpha;
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+    ctx.clearRect(0, 0, WORLD.width, WORLD.height);
     ctx.save();
     const sx = (Math.random() * 2 - 1) * this.shake;
     const sy = (Math.random() * 2 - 1) * this.shake;
@@ -284,15 +337,18 @@ export class Game {
     if (this.state === 'playing') {
       this.input.drawJoystick(ctx, this.time);
       if (!this.upgradeOpen) {
-        if (this.input.aim.active) drawReticle(ctx, this.input.aim.x, this.input.aim.y, 'rgba(255, 59, 212, 0.6)');
-        else if (!this.input.isTouchMode()) drawReticle(ctx, this.input.mouse.x, this.input.mouse.y, 'rgba(81, 246, 255, 0.55)');
+        if (this.input.aim.active) {
+          drawReticle(ctx, this.input.aim.x, this.input.aim.y, COLORS.pinkReticle);
+        } else if (!this.input.isTouchMode()) {
+          drawReticle(ctx, this.input.mouse.x, this.input.mouse.y, COLORS.cyanReticle);
+        }
       }
     }
     ctx.restore();
     ctx.drawImage(this.vignette, 0, 0);
     if (this.hitFlash > 0) {
-      ctx.fillStyle = `rgba(255, 42, 92, ${(this.hitFlash * 0.35).toFixed(3)})`;
-      ctx.fillRect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      ctx.fillStyle = `rgba(${COLORS.hitFlashRgb}, ${(this.hitFlash * GAME.hitFlashAlpha).toFixed(3)})`;
+      ctx.fillRect(0, 0, WORLD.width, WORLD.height);
     }
     this.ui.setHud(this);
   }

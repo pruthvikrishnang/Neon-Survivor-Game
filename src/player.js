@@ -1,13 +1,6 @@
-export const BASE_STATS = Object.freeze({
-  damage: 10,
-  fireInterval: 0.34,
-  shots: 1,
-  pierce: 0,
-  moveSpeed: 260,
-  maxHp: 100,
-  magnet: 90,
-  bulletSpeed: 900,
-});
+import { COLORS, PLAYER } from './config.js';
+
+export const BASE_STATS = PLAYER.baseStats;
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -20,7 +13,7 @@ export class Player {
   constructor(worldWidth, worldHeight) {
     this.worldWidth = worldWidth;
     this.worldHeight = worldHeight;
-    this.radius = 16;
+    this.radius = PLAYER.radius;
     this.upgrades = {};
     this.reset();
   }
@@ -33,10 +26,10 @@ export class Player {
     this.vy = 0;
     this.level = 1;
     this.xp = 0;
-    this.xpToNext = 6;
+    this.xpToNext = PLAYER.xpStart;
     this.invuln = 0;
-    this.hp = 100;
-    this.maxHp = 100;
+    this.hp = PLAYER.baseStats.maxHp;
+    this.maxHp = PLAYER.baseStats.maxHp;
     this.upgrades = {
       fireRate: 0, damage: 0, multishot: 0, pierce: 0,
       speed: 0, maxHp: 0, magnet: 0,
@@ -49,15 +42,20 @@ export class Player {
   recomputeStats() {
     const u = this.upgrades;
     const previousMax = this.maxHp;
+    const base = PLAYER.baseStats;
+    const upgrade = PLAYER.upgrades;
     this.stats = {
-      damage: BASE_STATS.damage * (1 + 0.3 * u.damage),
-      fireInterval: Math.max(0.065, BASE_STATS.fireInterval * Math.pow(0.845, u.fireRate)),
+      damage: base.damage * (1 + upgrade.damagePerLevel * u.damage),
+      fireInterval: Math.max(
+        upgrade.minFireInterval,
+        base.fireInterval * Math.pow(upgrade.fireRateMultiplier, u.fireRate),
+      ),
       shots: 1 + u.multishot,
       pierce: u.pierce,
-      moveSpeed: BASE_STATS.moveSpeed * (1 + 0.1 * u.speed),
-      maxHp: BASE_STATS.maxHp + 22 * u.maxHp,
-      magnet: BASE_STATS.magnet * (1 + 0.6 * u.magnet),
-      bulletSpeed: BASE_STATS.bulletSpeed,
+      moveSpeed: base.moveSpeed * (1 + upgrade.speedPerLevel * u.speed),
+      maxHp: base.maxHp + upgrade.hpPerLevel * u.maxHp,
+      magnet: base.magnet * (1 + upgrade.magnetPerLevel * u.magnet),
+      bulletSpeed: base.bulletSpeed,
     };
     this.maxHp = this.stats.maxHp;
     if (this.maxHp > previousMax) this.hp += this.maxHp - previousMax;
@@ -79,7 +77,7 @@ export class Player {
     this.y = clamp(this.y + this.vy * dt, this.radius, this.worldHeight - this.radius);
     const dx = aim.x - this.x;
     const dy = aim.y - this.y;
-    if (dx * dx + dy * dy > 4) this.aimAngle = Math.atan2(dy, dx);
+    if (dx * dx + dy * dy > PLAYER.aimDeadZoneSq) this.aimAngle = Math.atan2(dy, dx);
   }
 
   /**
@@ -89,7 +87,7 @@ export class Player {
   takeDamage(amount) {
     if (this.invuln > 0 || this.hp <= 0) return false;
     this.hp = Math.max(0, this.hp - amount);
-    this.invuln = 0.85;
+    this.invuln = PLAYER.invuln;
     return true;
   }
 
@@ -109,7 +107,7 @@ export class Player {
     while (this.xp >= this.xpToNext) {
       this.xp -= this.xpToNext;
       this.level += 1;
-      this.xpToNext = Math.round(6 + this.level * 4.5);
+      this.xpToNext = Math.round(PLAYER.xpBase + this.level * PLAYER.xpGrowth);
       gained += 1;
     }
     return gained;
@@ -127,62 +125,69 @@ export class Player {
    */
   draw(ctx, time) {
     if (!this.alive) return;
-    const blink = this.invuln > 0 && Math.floor(time * 18) % 2 === 0;
+    const d = PLAYER.draw;
+    const blink = this.invuln > 0 && Math.floor(time * d.blinkRate) % 2 === 0;
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.aimAngle);
-    ctx.globalAlpha = blink ? 0.35 : 1;
+    ctx.globalAlpha = blink ? d.blinkAlpha : 1;
 
-    ctx.shadowColor = '#51f6ff';
-    ctx.shadowBlur = 20;
-    ctx.fillStyle = 'rgba(81, 246, 255, 0.14)';
+    ctx.shadowColor = COLORS.cyan;
+    ctx.shadowBlur = d.glowBlur;
+    ctx.fillStyle = COLORS.cyanSoft;
     ctx.beginPath();
-    ctx.arc(0, 0, 26, 0, Math.PI * 2);
+    ctx.arc(0, 0, d.auraRadius, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.beginPath();
-    ctx.moveTo(23, 0);
-    ctx.lineTo(-13, 13);
-    ctx.lineTo(-7, 0);
-    ctx.lineTo(-13, -13);
+    ctx.moveTo(d.hullNose, 0);
+    ctx.lineTo(-d.hullBack, d.hullSide);
+    ctx.lineTo(-d.hullNotch, 0);
+    ctx.lineTo(-d.hullBack, -d.hullSide);
     ctx.closePath();
-    ctx.fillStyle = '#0a2233';
+    ctx.fillStyle = COLORS.cyanInk;
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#8ffbff';
+    ctx.lineWidth = d.hullStroke;
+    ctx.strokeStyle = COLORS.cyanBright;
     ctx.stroke();
 
-    ctx.shadowBlur = 10;
-    ctx.fillStyle = '#eaffff';
+    ctx.shadowBlur = d.cockpitBlur;
+    ctx.fillStyle = COLORS.cyanPale;
     ctx.beginPath();
-    ctx.arc(5, 0, 4.5, 0, Math.PI * 2);
+    ctx.arc(d.cockpitX, 0, d.cockpitRadius, 0, Math.PI * 2);
     ctx.fill();
 
-    const flame = 9 + Math.sin(time * 22) * 3;
-    ctx.shadowColor = '#ff3bd4';
-    ctx.fillStyle = 'rgba(255, 59, 212, 0.85)';
+    const flame = d.flameBase + Math.sin(time * d.flameSpeed) * d.flameWave;
+    ctx.shadowColor = COLORS.pink;
+    ctx.fillStyle = COLORS.pinkFlame;
     ctx.beginPath();
-    ctx.moveTo(-13, 5);
-    ctx.lineTo(-13 - flame, 0);
-    ctx.lineTo(-13, -5);
+    ctx.moveTo(-d.hullBack, d.flameTail);
+    ctx.lineTo(-d.hullBack - flame, 0);
+    ctx.lineTo(-d.hullBack, -d.flameTail);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
 
     if (this.invuln > 0) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(81, 246, 255, 0.45)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = COLORS.cyanShield;
+      ctx.lineWidth = d.shieldWidth;
       ctx.beginPath();
-      ctx.arc(this.x, this.y, this.radius + 9 + Math.sin(time * 12) * 2, 0, Math.PI * 2);
+      ctx.arc(
+        this.x,
+        this.y,
+        this.radius + d.shieldRadius + Math.sin(time * d.shieldSpeed) * d.shieldWave,
+        0,
+        Math.PI * 2,
+      );
       ctx.stroke();
       ctx.restore();
     }
 
     ctx.save();
-    ctx.globalAlpha = 0.16;
-    ctx.strokeStyle = '#b45cff';
-    ctx.lineWidth = 1;
+    ctx.globalAlpha = d.magnetAlpha;
+    ctx.strokeStyle = COLORS.violet;
+    ctx.lineWidth = d.magnetWidth;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.stats.magnet, 0, Math.PI * 2);
     ctx.stroke();

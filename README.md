@@ -73,7 +73,10 @@ neon-survivor/
   data/
     all-time-best.json Shared persisted all-time best score (created automatically)
   README.md
+  CHANGELOG.md         Release notes and verification history
+  DECISIONS.md         Design decisions and development workflow
   src/
+    config.js          Central gameplay, color, audio, UI, and server tuning
     main.js            Boot, event wiring, fixed-timestep game loop
     game.js            State machine, waves, scoring, upgrades, rendering
     best.js            Local/server all-time best synchronization
@@ -103,6 +106,11 @@ neon-survivor/
 - **Persistent all-time best.** `server.mjs` exposes `GET /api/best` and `POST /api/best`. It stores only the highest submitted score in `data/all-time-best.json`; reloads and restarts read that file, so a new lower score cannot become the high score. The browser also keeps a local copy and merges it upward on startup, so an existing local best seeds the server and a server best replaces stale browser data. With plain static hosting, the game silently falls back to per-browser `localStorage`.
 - **Safe failure handling.** All storage and API access is wrapped. If `localStorage` is blocked or the persistence server is unreachable, scores and settings still work in memory and local storage for the session.
 - **Testable logic.** Wave math, scaling, collision, spatial queries, upgrade application, XP thresholds, boss patterns, and storage fallbacks are separated from the DOM and covered by Node tests.
+- **Central tuning.** Gameplay constants, colors, audio parameters, UI timings, persistence keys, and server defaults live in `src/config.js`; pure mathematical and rendering geometry stays close to its drawing code.
+
+## Tuning
+
+Gameplay balance, enemy scaling, spawn rates, colors, audio, UI timings, storage keys, and server defaults are centralized in `src/config.js`. Change values there instead of editing individual modules.
 
 ## Testing
 

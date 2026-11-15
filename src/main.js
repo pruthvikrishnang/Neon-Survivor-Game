@@ -3,11 +3,12 @@ import { Input } from './input.js';
 import { AudioEngine } from './audio.js';
 import { UI } from './ui.js';
 import { loadSettings } from './storage.js';
+import { LOOP, WORLD } from './config.js';
 
 const canvas = document.getElementById('game');
 const settings = loadSettings();
 const audio = new AudioEngine(settings);
-const input = new Input(canvas, canvas.width, canvas.height);
+const input = new Input(canvas, WORLD.width, WORLD.height);
 const ui = new UI();
 const game = new Game({ canvas, ui, audio, input });
 window.neonSurvivor = game;
@@ -30,8 +31,6 @@ const unlockAudio = () => audio.init();
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
-const STEP = 1 / 60;
-const MAX_STEPS = 5;
 let lastTime = performance.now();
 let accumulator = 0;
 
@@ -39,18 +38,18 @@ function frame(now) {
   let delta = (now - lastTime) / 1000;
   lastTime = now;
   if (!Number.isFinite(delta) || delta < 0) delta = 0;
-  delta = Math.min(delta, 0.25);
+  delta = Math.min(delta, LOOP.maxFrameDelta);
   accumulator += delta;
 
   let steps = 0;
-  while (accumulator >= STEP && steps < MAX_STEPS) {
-    game.update(STEP);
-    accumulator -= STEP;
+  while (accumulator >= LOOP.step && steps < LOOP.maxSteps) {
+    game.update(LOOP.step);
+    accumulator -= LOOP.step;
     steps += 1;
   }
-  if (steps === MAX_STEPS) accumulator = 0;
+  if (steps === LOOP.maxSteps) accumulator = 0;
 
-  game.render(accumulator / STEP);
+  game.render(accumulator / LOOP.step);
   if (steps > 0) input.endFrame();
   requestAnimationFrame(frame);
 }

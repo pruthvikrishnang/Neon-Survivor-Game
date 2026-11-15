@@ -1,3 +1,5 @@
+import { COLORS, GAME, UI as UI_CONFIG } from './config.js';
+
 const $ = (id) => document.getElementById(id);
 
 /** DOM HUD, menus, wave banner and upgrade picker. */
@@ -135,16 +137,16 @@ export class UI {
     const xpPct = Math.max(0, Math.min(100, (p.xp / p.xpToNext) * 100));
     this.el.xpFill.style.width = `${xpPct.toFixed(2)}%`;
     this._text(this.el.xpText, `XP ${p.xp} / ${p.xpToNext}`);
-    if (game.combo >= 2) {
+    if (game.combo >= UI_CONFIG.comboMin) {
       this.el.combo.classList.remove('hidden');
-      const multiplier = 1 + Math.min(game.combo, 20) * 0.1;
+      const multiplier = 1 + Math.min(game.combo, GAME.comboMax) * GAME.comboStep;
       this._text(this.el.combo, `x${multiplier.toFixed(1)} · ${game.combo} COMBO`);
     } else {
       this.el.combo.classList.add('hidden');
     }
     if (boss) {
       this.el.bossWrap.classList.remove('hidden');
-      this._text(this.el.bossName, 'THE WARDEN');
+      this._text(this.el.bossName, UI_CONFIG.bossName);
       const pct = Math.max(0, (boss.hp / boss.maxHp) * 100);
       this.el.bossFill.style.width = `${pct.toFixed(2)}%`;
     } else {
@@ -167,7 +169,7 @@ export class UI {
     void el.offsetWidth;
     el.classList.add('show');
     clearTimeout(this._bannerTimer);
-    this._bannerTimer = setTimeout(() => el.classList.remove('show'), 1950);
+    this._bannerTimer = setTimeout(() => el.classList.remove('show'), UI_CONFIG.bannerDuration);
   }
 
   hideBanner() {
@@ -184,7 +186,9 @@ export class UI {
 
   /** @param {number} value 0..1 */
   setVolume(value) {
-    this.el.volume.value = String(Math.round(Math.max(0, Math.min(1, value)) * 100));
+    this.el.volume.value = String(
+      Math.round(Math.max(0, Math.min(1, value)) * UI_CONFIG.volumeScale),
+    );
   }
 }
 
@@ -198,35 +202,47 @@ export function createArenaBackground(width, height) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
+  const cfg = UI_CONFIG.arena;
   const gradient = ctx.createRadialGradient(
-    width / 2, height / 2, 80, width / 2, height / 2, width * 0.72,
+    width / 2, height / 2, cfg.glowNear,
+    width / 2, height / 2, width * cfg.glowRadiusFactor,
   );
-  gradient.addColorStop(0, '#0b1228');
-  gradient.addColorStop(0.55, '#060a18');
-  gradient.addColorStop(1, '#02030a');
+  gradient.addColorStop(0, COLORS.bgInner);
+  gradient.addColorStop(cfg.gradientMidStop, COLORS.bgMid);
+  gradient.addColorStop(cfg.gradientOuterStop, COLORS.bgOuter);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   ctx.lineWidth = 1;
-  for (let x = 0; x <= width; x += 80) {
-    ctx.strokeStyle = x % 400 === 0 ? 'rgba(81, 246, 255, 0.09)' : 'rgba(81, 246, 255, 0.035)';
+  for (let x = 0; x <= width; x += cfg.gridStep) {
+    ctx.strokeStyle = x % cfg.majorEvery === 0 ? COLORS.cyanGridMajor : COLORS.cyanGridMinor;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
     ctx.stroke();
   }
-  for (let y = 0; y <= height; y += 80) {
-    ctx.strokeStyle = y % 400 === 0 ? 'rgba(255, 59, 212, 0.07)' : 'rgba(81, 246, 255, 0.035)';
+  for (let y = 0; y <= height; y += cfg.gridStep) {
+    ctx.strokeStyle = y % cfg.majorEvery === 0 ? COLORS.pinkGridMajor : COLORS.cyanGridMinor;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
     ctx.stroke();
   }
-  ctx.strokeStyle = 'rgba(81, 246, 255, 0.4)';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(2, 2, width - 4, height - 4);
-  ctx.strokeStyle = 'rgba(255, 59, 212, 0.25)';
-  ctx.lineWidth = 8;
-  ctx.strokeRect(8, 8, width - 16, height - 16);
+  ctx.strokeStyle = COLORS.cyanBorder;
+  ctx.lineWidth = cfg.borderWidth;
+  ctx.strokeRect(
+    cfg.borderInset,
+    cfg.borderInset,
+    width - cfg.borderInset * 2,
+    height - cfg.borderInset * 2,
+  );
+  ctx.strokeStyle = COLORS.pinkBorder;
+  ctx.lineWidth = cfg.outerWidth;
+  ctx.strokeRect(
+    cfg.outerInset,
+    cfg.outerInset,
+    width - cfg.outerInset * 2,
+    height - cfg.outerInset * 2,
+  );
   return canvas;
 }
 
@@ -240,11 +256,13 @@ export function createVignette(width, height) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
+  const cfg = UI_CONFIG.vignette;
   const gradient = ctx.createRadialGradient(
-    width / 2, height / 2, height * 0.3, width / 2, height / 2, width * 0.68,
+    width / 2, height / 2, height * cfg.innerFactor,
+    width / 2, height / 2, width * cfg.outerFactor,
   );
-  gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  gradient.addColorStop(1, 'rgba(0, 0, 0, 0.62)');
+  gradient.addColorStop(0, COLORS.vignetteClear);
+  gradient.addColorStop(1, COLORS.vignetteEdge);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
   return canvas;
@@ -252,19 +270,20 @@ export function createVignette(width, height) {
 
 /** @param {CanvasRenderingContext2D} ctx @param {number} x @param {number} y @param {string} color */
 export function drawReticle(ctx, x, y, color) {
+  const cfg = UI_CONFIG.reticle;
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = cfg.lineWidth;
   ctx.beginPath();
-  ctx.arc(x, y, 9, 0, Math.PI * 2);
-  ctx.moveTo(x - 15, y);
-  ctx.lineTo(x - 5, y);
-  ctx.moveTo(x + 5, y);
-  ctx.lineTo(x + 15, y);
-  ctx.moveTo(x, y - 15);
-  ctx.lineTo(x, y - 5);
-  ctx.moveTo(x, y + 5);
-  ctx.lineTo(x, y + 15);
+  ctx.arc(x, y, cfg.radius, 0, Math.PI * 2);
+  ctx.moveTo(x - cfg.outer, y);
+  ctx.lineTo(x - cfg.inner, y);
+  ctx.moveTo(x + cfg.inner, y);
+  ctx.lineTo(x + cfg.outer, y);
+  ctx.moveTo(x, y - cfg.outer);
+  ctx.lineTo(x, y - cfg.inner);
+  ctx.moveTo(x, y + cfg.inner);
+  ctx.lineTo(x, y + cfg.outer);
   ctx.stroke();
   ctx.restore();
 }
